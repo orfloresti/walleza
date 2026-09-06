@@ -18,5 +18,4 @@ Thumbs.db
 
 # Local-only, never committed
 .atl/
-2026-09-05.bak
-fastbuget/
+/local/
