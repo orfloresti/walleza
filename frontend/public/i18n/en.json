@@ -1,0 +1,8 @@
+{
+  "app": {
+    "title": "Walleza"
+  },
+  "home": {
+    "greeting": "Welcome to Walleza"
+  }
+}

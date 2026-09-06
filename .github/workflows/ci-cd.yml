@@ -1,0 +1,242 @@
+# Single CI/CD workflow per design D10 ("Single `.github/workflows/ci-cd.yml`").
+#
+# - `pull_request`/`push` to `main`: lint/build/test both workspaces (spec
+#   "CI Checks on Pull Request").
+# - `push` to `main`: deploy job runs after both CI jobs succeed
+#   (`needs:`), gated on `main` and green checks (spec "Deploy on Merge to
+#   Main via OIDC"). Targets the `production` GitHub Environment.
+# - `workflow_dispatch`: manual trigger to exercise a deploy against
+#   `staging` (design D10 — "Staging OAuth client is exercised via
+#   `workflow_dispatch` before DNS cutover") without requiring a merge to
+#   `main`. Still runs both CI jobs first via `needs:`.
+#
+# AWS auth is OIDC-federated (`permissions.id-token: write`, no static
+# access keys stored anywhere in this repo) — the deploy job assumes an
+# IAM role provisioned in `infra/oidc.tf` whose trust policy is scoped to
+# `repo:<owner>/<repo>:environment:<staging|production>`, matching the
+# GitHub Environment the job runs under. The only long-lived secret this
+# repository stores is `CLOUDFLARE_API_TOKEN` (Cloudflare has no OIDC
+# federation, design D10's documented accepted residual). The Google
+# OAuth client ID is public and is provisioned directly onto the Lambda
+# function by Terraform (`infra/lambda.tf`), never passed through CI.
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: >-
+          Environment to deploy against. `staging` exercises the OAuth
+          flow end to end before the `walleza.orfloresti.dev` DNS cutover
+          (design D10); `production` is otherwise only reached via a
+          push to `main`.
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-ci:
+    name: Backend lint/build/test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --locked --all-extras
+
+      - name: Lint (ruff)
+        working-directory: backend
+        run: uv run ruff check .
+
+      - name: Test (pytest)
+        working-directory: backend
+        run: uv run pytest -q
+
+  frontend-ci:
+    name: Frontend lint/build/test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint (eslint)
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Unit tests (ng test)
+        working-directory: frontend
+        run: npx ng test --watch=false
+
+      - name: Worker unit tests (vitest)
+        working-directory: frontend
+        run: npm run test:worker
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  deploy:
+    name: Deploy
+    needs: [backend-ci, frontend-ci]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    # `push` to `main` always targets production; `workflow_dispatch` lets
+    # a maintainer choose (default staging). Each GitHub Environment
+    # scopes its own `AWS_DEPLOY_ROLE_ARN` variable and, for `production`,
+    # can later require reviewers as a one-switch escalation (design D10
+    # — off by default in Phase 0).
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_environment || 'production' }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      WALLEZA_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_environment || 'production' }}
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked --all-extras
+
+      - name: Run database migrations
+        working-directory: backend
+        # Migrations run as a deploy step BEFORE the code update, never in
+        # a request (design D3). The direct (non-pooled) DDL connection
+        # string is read straight from SSM by this OIDC role — it is
+        # never stored as a GitHub secret (design D10).
+        run: |
+          set -euo pipefail
+          # Declared and assigned separately (not `export VAR=$(cmd)`):
+          # combining `export` with a failing command substitution masks
+          # the substitution's exit status even under `set -e`, so a
+          # denied/missing SSM parameter would otherwise silently proceed
+          # with an empty connection string (found by shellcheck SC2155
+          # during this PR's review).
+          WALLEZA_MIGRATIONS_DATABASE_URL="$(aws ssm get-parameter \
+            --name "/walleza/${WALLEZA_ENVIRONMENT}/migrations_database_url" \
+            --with-decryption --query 'Parameter.Value' --output text)"
+          export WALLEZA_MIGRATIONS_DATABASE_URL
+          uv run alembic upgrade head
+
+      - name: Package backend for Lambda
+        working-directory: backend
+        # Cross-platform wheel install (no Docker/QEMU available on the
+        # hosted runner, and the runner itself is x86_64): every runtime
+        # dependency with compiled extensions (`psycopg[binary]`,
+        # `pyjwt[crypto]`'s `cryptography`, pydantic's `pydantic-core`)
+        # ships manylinux aarch64 wheels, matching design D1's `arm64`
+        # Lambda architecture choice. `--only-binary=:all:` makes this
+        # fail loudly instead of silently falling back to an
+        # incompatible sdist build if that ever stops being true.
+        #
+        # `aarch64-manylinux_2_28`, not the older `manylinux2014` (glibc
+        # 2.17) tag: `psycopg[binary]`'s aarch64 wheel is published only
+        # as `manylinux_2_27`/`manylinux_2_28`+ (verified against the real
+        # PyPI JSON API during this PR — no `manylinux2014_aarch64` wheel
+        # exists for it), so requesting the older baseline would force an
+        # sdist build with no C compiler/Postgres headers on this runner.
+        # The Lambda `python3.13` managed runtime (Amazon Linux 2023,
+        # glibc 2.34) comfortably satisfies the 2.28 floor.
+        #
+        # `--no-hashes` on export: `uv.lock` was resolved on this (x86_64)
+        # machine, so its hashes cover x86_64 wheels only — requesting
+        # aarch64 wheels with those hashes attached would fail hash
+        # verification.
+        run: |
+          set -euo pipefail
+          rm -rf package lambda.zip
+          mkdir -p package
+          uv export --frozen --no-dev --no-editable --no-hashes -o build-requirements.txt
+          uv pip install \
+            --target package \
+            --python-version 3.13 \
+            --python-platform aarch64-manylinux_2_28 \
+            --only-binary=:all: \
+            -r build-requirements.txt
+          cp -r app package/
+          cd package && zip -r -q ../lambda.zip . -x '*.pyc' -x '__pycache__/*'
+
+      - name: Update Lambda function code
+        run: |
+          set -euo pipefail
+          FUNCTION_NAME="walleza-backend-${WALLEZA_ENVIRONMENT}"
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --zip-file "fileb://backend/lambda.zip" \
+            --publish
+          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+
+      - name: Record deployed version/commit
+        # Merge-only update: `update-function-configuration --environment`
+        # REPLACES the whole environment-variable map, so the current one
+        # (secrets included) is read back and merged with `jq` rather than
+        # overwritten outright.
+        run: |
+          set -euo pipefail
+          FUNCTION_NAME="walleza-backend-${WALLEZA_ENVIRONMENT}"
+          CURRENT_ENV_JSON="$(aws lambda get-function-configuration \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Environment.Variables' --output json)"
+          ENVIRONMENT_PAYLOAD="$(echo "$CURRENT_ENV_JSON" | jq -c \
+            --arg version "${GITHUB_REF_NAME}" \
+            --arg commit "${GITHUB_SHA}" \
+            '{Variables: (. + {WALLEZA_APP_VERSION: $version, WALLEZA_COMMIT_SHA: $commit})}')"
+          aws lambda update-function-configuration \
+            --function-name "$FUNCTION_NAME" \
+            --environment "$ENVIRONMENT_PAYLOAD"
+          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Deploy frontend (Cloudflare Worker + static assets)
+        working-directory: frontend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --env "${WALLEZA_ENVIRONMENT}"

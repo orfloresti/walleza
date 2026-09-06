@@ -1,0 +1,43 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.19.2",
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "mangum>=0.22.0",
+    "psycopg[binary]>=3.3.5",
+    "pydantic-settings>=2.15.0",
+    "pyjwt[crypto]>=2.13.0",
+    "sqlalchemy>=2.0.52",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.6",
+]
+
+[tool.pytest.ini_options]
+# Flat (--app) layout, not src-layout: this makes `backend/` importable as
+# `app.*` during `uv run pytest` without installing the project as a package.
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff.lint.flake8-bugbear]
+# `Depends(...)`/`Cookie(...)` in a FastAPI argument default is the
+# framework's own documented pattern (evaluated once per request by
+# FastAPI's DI, not a mutable-default bug) — without this, ruff's B008
+# flags every dependency-injected route parameter.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Cookie",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Body",
+]

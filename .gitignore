@@ -1,0 +1,22 @@
+# Terraform (infra/)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# Environment / secrets — never committed (see infra/README.md, SSM owns runtime secrets)
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local-only, never committed
+.atl/
+2026-09-05.bak
+fastbuget/

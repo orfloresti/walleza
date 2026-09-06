@@ -1,0 +1,154 @@
+# Input variables for the walleza platform root module.
+#
+# This module is applied once per environment (`terraform apply
+# -var environment=staging`, then again with `-var environment=production`),
+# not with Terraform workspaces — every resource name/SSM path already
+# includes `var.environment`, so two applies produce two fully independent
+# sets of resources (own Lambda, own IAM roles, own SSM parameters), matching
+# design D10's `/walleza/<env>/<name>` SSM layout and the CI workflow's
+# per-GitHub-Environment (`staging`/`production`) deploy targets.
+
+variable "environment" {
+  description = "Deployment environment this apply targets. Drives resource names and SSM parameter paths (design D10)."
+  type        = string
+
+  validation {
+    condition     = contains(["staging", "production"], var.environment)
+    error_message = "environment must be \"staging\" or \"production\"."
+  }
+}
+
+variable "aws_region" {
+  description = "AWS region hosting the Lambda function and SSM parameters."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "github_repository" {
+  description = <<-EOT
+    GitHub repository in "<owner>/<repo>" form, used to scope the GitHub
+    Actions OIDC trust condition (design D10:
+    `sub = repo:<owner>/walleza:environment:<environment>`).
+  EOT
+  type        = string
+  default     = "orfloresti/walleza"
+}
+
+variable "create_github_oidc_provider" {
+  description = <<-EOT
+    Whether this apply should create the AWS account's GitHub Actions OIDC
+    identity provider (`infra/oidc.tf`). An AWS account can only register
+    `token.actions.githubusercontent.com` ONCE — set this to `true` on the
+    first environment ever applied (e.g. `staging`, applied first) and
+    `false` on every subsequent environment apply (e.g. `production`), which
+    instead references the provider the first apply created via a data
+    source. See `infra/README.md`'s "Bootstrap order" section.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "lambda_package_path" {
+  description = <<-EOT
+    Path to the zipped Lambda deployment package (Mangum-wrapped FastAPI
+    app + dependencies). The CI/CD deploy job (`.github/workflows/ci-cd.yml`)
+    builds and pushes real code via `aws lambda update-function-code` on
+    every deploy; this path only needs to exist and be valid the FIRST time
+    `terraform apply` creates the function (Lambda requires a non-empty
+    `filename`/code payload at creation time). A minimal placeholder archive
+    is enough — see `infra/README.md`'s "First apply" section.
+  EOT
+  type        = string
+  default     = "./placeholder-lambda.zip"
+}
+
+variable "lambda_memory_size_mb" {
+  description = "Lambda memory in MB (design D1: 1024 MB, no provisioned concurrency)."
+  type        = number
+  default     = 1024
+}
+
+variable "lambda_timeout_seconds" {
+  description = "Lambda invocation timeout."
+  type        = number
+  default     = 15
+}
+
+variable "log_retention_days" {
+  description = "CloudWatch Logs retention for the Lambda function's log group."
+  type        = number
+  default     = 30
+}
+
+# --- Non-secret application configuration -----------------------------
+# Mirrors backend/app/config.py's `Settings` field names 1:1 (minus the
+# fields sourced from SSM SecureString in ssm.tf/lambda.tf below). These
+# are plain Lambda environment variables, not secrets, so they are ordinary
+# Terraform variables rather than SSM parameters.
+
+variable "app_version" {
+  description = "Initial WALLEZA_APP_VERSION value; the CI/CD deploy job overwrites this on every deploy (see ci-cd.yml's \"Record deployed version/commit\" step)."
+  type        = string
+  default     = "0.0.0-unreleased"
+}
+
+variable "jwt_issuer" {
+  type    = string
+  default = "walleza"
+}
+
+variable "jwt_audience" {
+  type    = string
+  default = "walleza-web"
+}
+
+variable "jwt_kid" {
+  description = "Key ID header for issued access JWTs (design D8 — present from day one for future key rotation)."
+  type        = string
+  default     = "prod-key-1"
+}
+
+variable "jwt_access_ttl_seconds" {
+  type    = number
+  default = 900
+}
+
+variable "oauth_state_ttl_seconds" {
+  type    = number
+  default = 600
+}
+
+variable "refresh_ttl_days" {
+  type    = number
+  default = 30
+}
+
+variable "google_client_id" {
+  description = "Google OAuth client ID. Public per design D10 (\"Google client ID is public\") — not a secret, but still environment-specific (staging and production use distinct Google OAuth clients per design D10/proposal)."
+  type        = string
+}
+
+variable "google_jwks_url" {
+  type    = string
+  default = "https://www.googleapis.com/oauth2/v3/certs"
+}
+
+variable "google_issuer" {
+  type    = string
+  default = "https://accounts.google.com"
+}
+
+variable "google_authorization_endpoint" {
+  type    = string
+  default = "https://accounts.google.com/o/oauth2/v2/auth"
+}
+
+variable "google_token_endpoint" {
+  type    = string
+  default = "https://oauth2.googleapis.com/token"
+}
+
+variable "google_redirect_uri" {
+  description = "Must exactly match a redirect URI registered on this environment's Google OAuth client. Same-origin via the Cloudflare Worker (design D9), e.g. https://walleza.orfloresti.dev/api/auth/callback for production."
+  type        = string
+}

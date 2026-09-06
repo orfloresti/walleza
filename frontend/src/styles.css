@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+/* You can add global styles to this file, and also import other style files */
+
+/*
+ * Design D5 — semantic color tokens registered with Tailwind v4's
+ * `@theme` directive so components consume them as ordinary utility
+ * classes (`bg-surface`, `text-on-surface`, `border-border`, ...)
+ * instead of scattered `dark:` utilities. Each token is a thin alias
+ * onto a plain custom property so a single `:root` / `@media` /
+ * `[data-theme]` block below is the only place that ever changes.
+ */
+@theme {
+  --color-surface: var(--surface);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-muted: var(--on-surface-muted);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-border: var(--border);
+  --color-danger: var(--danger);
+  --color-on-danger: var(--on-danger);
+}
+
+/*
+ * Reserved for a future manual light/dark toggle (design D5). Nothing
+ * sets `[data-theme]` yet in Phase 0 — theming follows only the OS
+ * `prefers-color-scheme` signal (spec `theming`), with no toggle UI.
+ * `@custom-variant dark` makes Tailwind's `dark:` utilities honour
+ * either signal once a manual toggle exists.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --surface: oklch(98% 0 0);
+  --surface-variant: oklch(94% 0 0);
+  --on-surface: oklch(20% 0 0);
+  --on-surface-muted: oklch(45% 0 0);
+  --primary: oklch(51% 0.18 260);
+  --on-primary: oklch(100% 0 0);
+  --border: oklch(88% 0 0);
+  --danger: oklch(58% 0.22 25);
+  --on-danger: oklch(100% 0 0);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: oklch(18% 0 0);
+    --surface-variant: oklch(24% 0 0);
+    --on-surface: oklch(96% 0 0);
+    --on-surface-muted: oklch(70% 0 0);
+    --primary: oklch(75% 0.15 260);
+    --on-primary: oklch(15% 0 0);
+    --border: oklch(32% 0 0);
+    --danger: oklch(70% 0.2 25);
+    --on-danger: oklch(15% 0 0);
+
+    color-scheme: dark;
+  }
+}
+
+/* Manual-toggle override hooks (inert until a future toggle sets them). */
+[data-theme="dark"] {
+  --surface: oklch(18% 0 0);
+  --surface-variant: oklch(24% 0 0);
+  --on-surface: oklch(96% 0 0);
+  --on-surface-muted: oklch(70% 0 0);
+  --primary: oklch(75% 0.15 260);
+  --on-primary: oklch(15% 0 0);
+  --border: oklch(32% 0 0);
+  --danger: oklch(70% 0.2 25);
+  --on-danger: oklch(15% 0 0);
+
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --surface: oklch(98% 0 0);
+  --surface-variant: oklch(94% 0 0);
+  --on-surface: oklch(20% 0 0);
+  --on-surface-muted: oklch(45% 0 0);
+  --primary: oklch(51% 0.18 260);
+  --on-primary: oklch(100% 0 0);
+  --border: oklch(88% 0 0);
+  --danger: oklch(58% 0.22 25);
+  --on-danger: oklch(100% 0 0);
+
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--surface);
+  color: var(--on-surface);
+}

@@ -1,0 +1,95 @@
+# Cloudflare Worker configuration (design D9): one Worker serves the
+# Angular SPA's static build AND proxies `/api/*` to the backend Lambda
+# Function URL (`worker/index.ts`). Same-origin removes CORS entirely and
+# keeps cookie-based auth viable (`SameSite=Lax`).
+#
+# No real Cloudflare account/zone/Lambda deployment exists in this
+# sandbox — `.github/workflows/ci-cd.yml`'s deploy job runs
+# `wrangler deploy --env <staging|production>` for real once a real
+# Cloudflare account/zone and a real Lambda Function URL exist (PR6:
+# staging verification, then the `walleza.orfloresti.dev` DNS cutover).
+# Per top-level `[vars]`/`[[routes]]` are NOT inherited by named
+# environments in Wrangler — each of `[env.staging]`/`[env.production]`
+# below repeats what it needs so `wrangler deploy --env <name>` has a
+# complete, unambiguous configuration instead of silently falling back to
+# a top-level placeholder.
+
+name = "walleza-web"
+main = "worker/index.ts"
+compatibility_date = "2026-09-01"
+
+[assets]
+# `ng build` output (see `angular.json` browser build target).
+directory = "./dist/frontend/browser"
+binding = "ASSETS"
+# Any path not matching a real static asset falls back to `index.html`
+# (Angular Router client-side navigation) — EXCEPT `/api/*`, which
+# `worker/index.ts` proxies before ever reaching this fallback.
+not_found_handling = "single-page-application"
+# Cache-Control correction (task 6.6, design D6a) happens in
+# `worker/index.ts`'s `withCacheHeaders()`, not here: `index.html` and
+# `ngsw.json` are forced `no-cache` so a deploy is always visible on the
+# next request, while `ng build`'s content-hashed JS/CSS bundles get an
+# immutable long TTL, since a new deploy always produces a new URL for
+# them.
+
+[vars]
+# Default (no `--env`) config, used only for local `wrangler dev`.
+API_ORIGIN = "http://localhost:8000"
+
+# WORKER_ORIGIN_TOKEN is a SECRET and must NOT be committed here, in any
+# environment. Set it per environment with:
+#
+#     wrangler secret put WORKER_ORIGIN_TOKEN --env <staging|production>
+#
+# and mirror the SAME value into that environment's
+# `/walleza/<environment>/worker_origin_token` SSM SecureString parameter
+# (`infra/ssm.tf`, design D10) so FastAPI's origin-token middleware
+# (`app/main.py` `OriginTokenMiddleware`) accepts it (design D9).
+
+# --- staging ---
+# Exercised via `workflow_dispatch` before the production DNS cutover
+# (design D10). No custom domain/route: served from the default
+# `*.workers.dev` subdomain, since `walleza.orfloresti.dev` is reserved for
+# production and the cutover itself is PR6 scope.
+[env.staging]
+name = "walleza-web-staging"
+
+[env.staging.assets]
+directory = "./dist/frontend/browser"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[env.staging.vars]
+# Public: safe to commit (design D10 — "Google client ID is public"). Set
+# via `wrangler deploy --env staging --var GOOGLE_CLIENT_ID:<real-id>` if
+# this Worker ever needs it directly; today only the backend Lambda reads
+# a Google client ID (`infra/lambda.tf`'s `google_client_id` variable).
+# The Function URL itself is not secret either (locked by
+# WORKER_ORIGIN_TOKEN, not obscurity) — real value comes from this
+# environment's `terraform apply` output (`infra/outputs.tf`'s
+# `lambda_function_url`).
+API_ORIGIN = "https://REPLACE-with-staging-lambda-function-url.lambda-url.REGION.on.aws"
+
+# --- production ---
+[env.production]
+name = "walleza-web"
+
+[env.production.assets]
+directory = "./dist/frontend/browser"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[env.production.vars]
+API_ORIGIN = "https://REPLACE-with-production-lambda-function-url.lambda-url.REGION.on.aws"
+
+[[env.production.routes]]
+# A Custom Domain route is host-only — no wildcard, no path (Wrangler
+# rejects `walleza.orfloresti.dev/*` here with "Wildcard operators (*) are
+# not allowed in Custom Domains", confirmed against a real `wrangler
+# deploy --dry-run` during this PR). The Worker still serves every path
+# under this host: `[assets].not_found_handling` above falls back to the
+# SPA shell for any non-API path, and `worker/index.ts` intercepts
+# `/api/*` before that fallback ever runs.
+pattern = "walleza.orfloresti.dev"
+custom_domain = true
