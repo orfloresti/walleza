@@ -69,7 +69,7 @@ not_found_handling = "single-page-application"
 # WORKER_ORIGIN_TOKEN, not obscurity) — real value comes from this
 # environment's `terraform apply` output (`infra/outputs.tf`'s
 # `lambda_function_url`).
-API_ORIGIN = "https://REPLACE-with-staging-lambda-function-url.lambda-url.REGION.on.aws"
+API_ORIGIN = "https://tntbasilnjuxbrsch2vwnox4c40xyyuz.lambda-url.us-east-1.on.aws"
 
 # --- production ---
 [env.production]
@@ -81,7 +81,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 [env.production.vars]
-API_ORIGIN = "https://REPLACE-with-production-lambda-function-url.lambda-url.REGION.on.aws"
+API_ORIGIN = "https://3idkehlclim2f733voqdiixwlq0smqlp.lambda-url.us-east-1.on.aws"
 
 [[env.production.routes]]
 # A Custom Domain route is host-only — no wildcard, no path (Wrangler
