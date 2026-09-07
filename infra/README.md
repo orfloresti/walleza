@@ -37,13 +37,15 @@ PR5 (task 7.3) implements the AWS side of this module: the backend Lambda
 function, its Function URL, the Lambda execution role, the GitHub Actions
 OIDC trust role used by `.github/workflows/ci-cd.yml`'s deploy job, and the
 SSM SecureString parameters that hold every runtime secret
-`backend/app/config.py`'s `Settings` reads. **No `terraform apply` has been
-run against a real AWS account in this sandbox** — there are no AWS
-credentials here, and the CLI itself is not installed (see "Local
-validation caveat" below). The HCL was hand-reviewed instead; `terraform
-validate`/`terraform fmt -check` should be run as the first step of
-whichever pipeline/workstation does have the CLI, before the first real
-apply.
+`backend/app/config.py`'s `Settings` reads. **Update (PR6): applied for
+real against both `staging` and `production`** (own `.tfstate` file per
+environment, per "Apply model" above). This surfaced and fixed one real
+bug not caught by hand-review or `validate`: `aws_lambda_function_url`'s
+`cors` block is rejected by the real API when `allow_origins` is empty
+(`InvalidParameterValueException`) — removed the block entirely, since
+design D9 never has a browser call this Function URL directly (same-origin
+via the Cloudflare Worker), so there was nothing for `cors` to configure in
+the first place.
 
 Cloudflare Worker/DNS resources are explicitly **not** part of this PR:
 task 7.3's own task text lists only "Lambda + Function URL, IAM/OIDC roles,
@@ -118,12 +120,28 @@ aws ssm put-parameter \
 ```
 
 Terraform's `lifecycle.ignore_changes` on each parameter's `value` means a
-later `terraform apply` never reverts this back to the placeholder — but it
-also means the Lambda's environment variables (populated by a `data
-"aws_ssm_parameter"` read of the CURRENT value at apply time, see
-`lambda.tf`) only pick up a freshly-written secret on the NEXT
-`terraform apply`, not automatically. Re-run `terraform apply` once after
-writing real secrets for the first time.
+later `terraform apply` never reverts this back to the placeholder.
+
+**Correction (found during PR6's real staging/production apply): re-running
+`terraform apply` does NOT push a freshly-written secret into the Lambda.**
+`aws_lambda_function.backend` in `lambda.tf` has `ignore_changes = [...,
+environment]` — deliberately, so CI's own version-stamp update
+(`update-function-configuration` in `ci-cd.yml`) never gets reverted by a
+later `apply`. That same lifecycle block also means Terraform never
+re-reads the `data "aws_ssm_parameter"` values into the function after
+creation, no matter how many times you re-apply. After writing real
+secrets for the first time (or rotating any of them later), update the
+Lambda directly:
+
+```bash
+aws lambda update-function-configuration \
+  --function-name walleza-backend-<environment> \
+  --environment file://<a JSON file with the full Variables map, values
+    resolved from the current SSM parameters and variables.tf's
+    non-secret defaults — see lambda.tf's local.non_secret_env/secret_env
+    for the exact key list>
+aws lambda wait function-updated --function-name walleza-backend-<environment>
+```
 
 ## Wiring the GitHub Environment
 

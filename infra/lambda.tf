@@ -175,13 +175,13 @@ resource "aws_lambda_function_url" "backend" {
   function_name      = aws_lambda_function.backend.function_name
   authorization_type = "NONE"
 
-  cors {
-    # Same-origin via the Cloudflare Worker proxy (design D9) — the
-    # browser never calls this Function URL directly, so CORS is left at
-    # its most restrictive useful default rather than opened up.
-    allow_origins = []
-    allow_methods = ["GET", "POST"]
-  }
+  # No `cors` block: the browser never calls this Function URL directly
+  # (same-origin via the Cloudflare Worker proxy, design D9), so there is no
+  # cross-origin request to configure. AWS rejects an enabled `cors` block
+  # with an empty `allow_origins` list (`InvalidParameterValueException`),
+  # confirmed against the real API during this apply — omitting the block
+  # entirely is the correct fix, not populating it with an origin nothing
+  # will ever send.
 }
 
 # Required whenever a Function URL uses `authorization_type = "NONE"`:

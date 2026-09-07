@@ -4,8 +4,14 @@
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+*.tfplan
 crash.log
 crash.*.log
+
+# First-create-only Lambda payload (see infra/README.md's "First apply"
+# section) — regenerated locally whenever needed, never a build artifact
+# CI or Terraform itself produces.
+infra/placeholder-lambda.zip
 
 # Environment / secrets — never committed (see infra/README.md, SSM owns runtime secrets)
 .env
