@@ -72,7 +72,13 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.environment}"]
+      # Immutable subject-claim format (var.github_owner_id/github_repo_id
+      # doc comment in variables.tf explains why this isn't the plain
+      # `repo:<owner>/<repo>:environment:<env>` the design doc originally
+      # specified).
+      values = [
+        "repo:${split("/", var.github_repository)[0]}@${var.github_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repo_id}:environment:${var.environment}"
+      ]
     }
   }
 }

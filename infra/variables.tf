@@ -34,6 +34,28 @@ variable "github_repository" {
   default     = "orfloresti/walleza"
 }
 
+# GitHub's "immutable subject claims" change (see
+# https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/):
+# repos CREATED AFTER 2026-07-15 — this one included, created 2026-09-06 —
+# get a `sub` claim of the form `repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:NAME`
+# by default, not the older `repo:OWNER/REPO:environment:NAME` this module's
+# first real apply (PR6) used and had rejected with a real
+# `sts:AssumeRoleWithWebIdentity` "Not authorized" error — confirmed via
+# CloudTrail's logged `userIdentity.principalId` on the actual failed call.
+# These IDs are immutable per GitHub account/repo (survive a rename), fetched
+# once via `gh api users/orfloresti --jq .id` / `gh api repos/orfloresti/walleza --jq .id`.
+variable "github_owner_id" {
+  description = "Immutable numeric ID of the GitHub account/org owning this repository."
+  type        = string
+  default     = "14968496"
+}
+
+variable "github_repo_id" {
+  description = "Immutable numeric ID of this GitHub repository."
+  type        = string
+  default     = "1359433203"
+}
+
 variable "create_github_oidc_provider" {
   description = <<-EOT
     Whether this apply should create the AWS account's GitHub Actions OIDC

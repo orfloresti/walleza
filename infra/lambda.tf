@@ -195,3 +195,30 @@ resource "aws_lambda_permission" "function_url_public" {
   principal              = "*"
   function_url_auth_type = "NONE"
 }
+
+# AWS change effective for function URLs created after October 2025 (ours
+# was created 2026-09): a public NONE-auth Function URL now ALSO needs a
+# `lambda:InvokeFunction` permission scoped to
+# `lambda:InvokedViaFunctionUrl: true`, or every request 403s with
+# `AccessDeniedException` even though `function_url_public` above already
+# grants `InvokeFunctionUrl` — confirmed against the real API during PR6
+# (curling the Function URL directly and through the Cloudflare Worker both
+# returned the same AWS-level 403 before this permission existed).
+#
+# NOT managed by this Terraform module: `aws_lambda_permission` in the
+# pinned `hashicorp/aws ~> 5.0` provider (5.100.0, the latest 5.x) has no
+# `invoked_via_function_url` argument — only added upstream after this
+# provider line (tracked in hashicorp/terraform-provider-aws#44829; requires
+# a 6.x provider, not attempted here to avoid an unreviewed major-version
+# bump for one permission). Applied out-of-band via the AWS CLI instead,
+# once per environment:
+#
+#   aws lambda add-permission --function-name walleza-backend-<environment> \
+#     --statement-id AllowPublicFunctionUrlInvokeFunction \
+#     --action lambda:InvokeFunction --principal '*' \
+#     --invoked-via-function-url
+#
+# TODO: fold this into Terraform (aws_lambda_permission with
+# invoked_via_function_url) once the provider is bumped to a 6.x release
+# that supports it — `terraform import` the existing statement rather than
+# recreating it.
