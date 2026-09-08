@@ -86,6 +86,13 @@ class Settings(BaseSettings):
     # while this is unset.
     worker_origin_token: str = Field(default="")
 
+    # Invite-link lifetime (design D12): a workspace invite is a bearer
+    # credential handed to a third party, so — unlike the stateless
+    # `pkce_state` cookie — it is server-state-backed, single-use, and
+    # time-boxed. 7 days balances "long enough to actually be used" against
+    # "short enough that a leaked, unused link stops working on its own".
+    invite_ttl_days: int = 7
+
     # Direct (non-pooled) Postgres connection, used ONLY by Alembic to run
     # DDL (design D2/D3). Supavisor's transaction pooler (`:6543`, used by
     # `database_url` above for runtime traffic) forbids server-side prepared

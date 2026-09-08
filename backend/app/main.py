@@ -12,8 +12,11 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app.accounts.router import router as accounts_router
 from app.auth.router import router as auth_router
 from app.config import get_settings
+from app.workspace.router import bootstrap_router as workspace_bootstrap_router
+from app.workspace.router import router as workspace_router
 
 ORIGIN_TOKEN_HEADER = b"x-origin-token"
 
@@ -69,6 +72,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title="walleza", version=settings.app_version)
     app.add_middleware(OriginTokenMiddleware)
     app.include_router(auth_router)
+    app.include_router(workspace_bootstrap_router)
+    app.include_router(workspace_router)
+    app.include_router(accounts_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

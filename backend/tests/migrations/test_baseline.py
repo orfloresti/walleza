@@ -154,7 +154,14 @@ def test_baseline_creates_only_auth_tables_and_downgrades_cleanly(
     try:
         # GREEN: running the baseline against an empty, real database
         # succeeds and creates exactly the two auth-support tables.
-        command.upgrade(cfg, "head")
+        #
+        # Pinned to the explicit "0001" revision rather than "head": once
+        # `0002_workspace_accounts` (Phase 1) exists, "head" resolves past
+        # this revision, and this test's whole point is to prove revision
+        # 0001 IN ISOLATION defines only the two auth-support tables (spec:
+        # "Migration Framework with Auth-Only Baseline"), not whatever the
+        # latest revision happens to be.
+        command.upgrade(cfg, "0001")
 
         inspector = sa.inspect(engine)
         assert "app" in inspector.get_schema_names()

@@ -4,5 +4,44 @@
   },
   "home": {
     "greeting": "Bienvenido a Walleza"
+  },
+  "workspace": {
+    "title": "Espacio de trabajo",
+    "loading": "Cargando tu espacio de trabajo…",
+    "loadError": "No se pudo cargar tu espacio de trabajo. Inténtalo de nuevo.",
+    "removeMember": "Eliminar",
+    "generateInvite": "Generar enlace de invitación",
+    "inviteError": "No se pudo generar el enlace de invitación. Inténtalo de nuevo.",
+    "removeMemberError": "No se pudo eliminar a ese miembro. Inténtalo de nuevo."
+  },
+  "join": {
+    "pending": "Uniéndote al espacio de trabajo…",
+    "success": "Te has unido al espacio de trabajo.",
+    "invalid": "Este enlace de invitación no es válido o ha expirado.",
+    "conflict": "Sal de tu espacio de trabajo actual antes de aceptar una nueva invitación.",
+    "error": "Algo salió mal. Inténtalo de nuevo."
+  },
+  "accounts": {
+    "title": "Cuentas",
+    "loading": "Cargando tus cuentas…",
+    "loadError": "No se pudieron cargar tus cuentas. Inténtalo de nuevo.",
+    "showArchived": "Mostrar archivadas",
+    "personalBadge": "Personal",
+    "archivedBadge": "Archivada",
+    "archive": "Archivar",
+    "archiveError": "No se pudo archivar esa cuenta. Inténtalo de nuevo.",
+    "createTitle": "Añadir cuenta",
+    "name": "Nombre",
+    "currency": "Moneda",
+    "exchangeRate": "Tipo de cambio",
+    "initialFunds": "Fondos iniciales",
+    "isPersonal": "Cuenta personal",
+    "create": "Crear cuenta",
+    "createError": "No se pudo crear esa cuenta. Inténtalo de nuevo."
+  },
+  "summary": {
+    "title": "Resumen",
+    "grandTotal": "Total general",
+    "loadError": "No se pudo cargar el resumen. Inténtalo de nuevo."
   }
 }

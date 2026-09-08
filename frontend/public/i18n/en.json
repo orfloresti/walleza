@@ -4,5 +4,44 @@
   },
   "home": {
     "greeting": "Welcome to Walleza"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "loading": "Loading your workspace…",
+    "loadError": "Could not load your workspace. Please try again.",
+    "removeMember": "Remove",
+    "generateInvite": "Generate invite link",
+    "inviteError": "Could not generate an invite link. Please try again.",
+    "removeMemberError": "Could not remove that member. Please try again."
+  },
+  "join": {
+    "pending": "Joining the workspace…",
+    "success": "You have joined the workspace.",
+    "invalid": "This invite link is invalid or has expired.",
+    "conflict": "Leave your current workspace before accepting a new invite.",
+    "error": "Something went wrong. Please try again."
+  },
+  "accounts": {
+    "title": "Accounts",
+    "loading": "Loading your accounts…",
+    "loadError": "Could not load your accounts. Please try again.",
+    "showArchived": "Show archived",
+    "personalBadge": "Personal",
+    "archivedBadge": "Archived",
+    "archive": "Archive",
+    "archiveError": "Could not archive that account. Please try again.",
+    "createTitle": "Add account",
+    "name": "Name",
+    "currency": "Currency",
+    "exchangeRate": "Exchange rate",
+    "initialFunds": "Initial funds",
+    "isPersonal": "Personal account",
+    "create": "Create account",
+    "createError": "Could not create that account. Please try again."
+  },
+  "summary": {
+    "title": "Summary",
+    "grandTotal": "Grand total",
+    "loadError": "Could not load the summary. Please try again."
   }
 }

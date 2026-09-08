@@ -11,6 +11,12 @@
  * `AuthService` — this proves the guard genuinely waits for the
  * `/api/me` round trip before deciding, rather than assuming a
  * synchronous/pre-known auth state.
+ *
+ * Phase 1 PR4 (tasks 7.1/7.3) extends this file: the same `authGuard`
+ * is what now protects `/workspace`, `/accounts` (PR4b), and
+ * `/join/:token` — the deep-link stash/consume tests below prove the
+ * generic mechanism `/join/:token` relies on to survive the Google
+ * OAuth round trip (design's Phase 1 frontend routing note).
  */
 
 import { provideHttpClient } from '@angular/common/http';
@@ -19,6 +25,7 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { Router, UrlTree, provideRouter } from '@angular/router';
 import type { ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
 import { Observable, firstValueFrom, isObservable } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,19 +35,21 @@ import { AuthService } from './auth.service';
 
 const DUMMY_ROUTE = {} as ActivatedRouteSnapshot;
 const DUMMY_STATE = {} as RouterStateSnapshot;
+const POST_LOGIN_REDIRECT_KEY = 'walleza.postLoginRedirect';
 
 describe('authGuard', () => {
   let httpMock: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     httpMock = TestBed.inject(HttpTestingController);
   });
 
   afterEach(() => {
     httpMock.verify();
+    sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
   });
 
   it('redirects an unauthenticated direct navigation to a guarded route and blocks it', async () => {
@@ -83,5 +92,57 @@ describe('authGuard', () => {
 
     expect(canActivate).toBe(true);
     expect(redirectSpy).not.toHaveBeenCalled();
+  });
+
+  it('stashes the attempted URL before redirecting an unauthenticated visitor to login (deep-link preservation, task 7.1/7.4)', async () => {
+    const authService = TestBed.inject(AuthService);
+    vi.spyOn(authService, 'redirectToLogin').mockImplementation((): void => undefined);
+    const joinAttempt = { url: '/join/abc123' } as RouterStateSnapshot;
+
+    const guardResult = TestBed.runInInjectionContext(() =>
+      authGuard(DUMMY_ROUTE, joinAttempt),
+    );
+    const resultPromise = firstValueFrom(guardResult as Observable<boolean | UrlTree>);
+
+    httpMock.expectOne('/api/me').flush('Unauthorized', {
+      status: 401,
+      statusText: 'Unauthorized',
+    });
+    await resultPromise;
+
+    expect(sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY)).toBe('/join/abc123');
+  });
+
+  it('replays the stashed URL as a redirect once authentication succeeds, and clears the stash', async () => {
+    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, '/join/abc123');
+    const router = TestBed.inject(Router);
+    const postLoginAttempt = { url: '/workspace' } as RouterStateSnapshot;
+
+    const guardResult = TestBed.runInInjectionContext(() =>
+      authGuard(DUMMY_ROUTE, postLoginAttempt),
+    );
+    const resultPromise = firstValueFrom(guardResult as Observable<boolean | UrlTree>);
+
+    httpMock.expectOne('/api/me').flush({ id: 'user-1', email: 'user@example.com' });
+    const result = await resultPromise;
+
+    expect(result).toBeInstanceOf(UrlTree);
+    expect(router.serializeUrl(result as UrlTree)).toBe('/join/abc123');
+    expect(sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY)).toBeNull();
+  });
+
+  it('does not redirect when the stashed URL is already the current attempted URL (the replay itself)', async () => {
+    sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, '/join/abc123');
+    const replayAttempt = { url: '/join/abc123' } as RouterStateSnapshot;
+
+    const guardResult = TestBed.runInInjectionContext(() =>
+      authGuard(DUMMY_ROUTE, replayAttempt),
+    );
+    const resultPromise = firstValueFrom(guardResult as Observable<boolean | UrlTree>);
+
+    httpMock.expectOne('/api/me').flush({ id: 'user-1', email: 'user@example.com' });
+    const result = await resultPromise;
+
+    expect(result).toBe(true);
   });
 });
