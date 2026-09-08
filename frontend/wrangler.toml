@@ -49,9 +49,17 @@ API_ORIGIN = "http://localhost:8000"
 
 # --- staging ---
 # Exercised via `workflow_dispatch` before the production DNS cutover
-# (design D10). No custom domain/route: served from the default
-# `*.workers.dev` subdomain, since `walleza.orfloresti.dev` is reserved for
-# production and the cutover itself is PR6 scope.
+# (design D10).
+#
+# Correction (found during PR6's real login test): this environment's
+# `google_redirect_uri` (infra/variables.tf, wired into the Lambda's
+# WALLEZA_GOOGLE_REDIRECT_URI) was set to `staging.walleza.orfloresti.dev`
+# from the start, but this file originally kept staging on the default
+# `*.workers.dev` subdomain with no custom domain — the two never matched,
+# so Google's OAuth callback redirected to a host with no DNS record at
+# all. Fixed by giving staging its own Custom Domain route below (user's
+# choice, over the alternative of changing the redirect URI to the
+# workers.dev URL instead) rather than leaving it on the default subdomain.
 [env.staging]
 name = "walleza-web-staging"
 
@@ -70,6 +78,10 @@ not_found_handling = "single-page-application"
 # environment's `terraform apply` output (`infra/outputs.tf`'s
 # `lambda_function_url`).
 API_ORIGIN = "https://tntbasilnjuxbrsch2vwnox4c40xyyuz.lambda-url.us-east-1.on.aws"
+
+[[env.staging.routes]]
+pattern = "staging.walleza.orfloresti.dev"
+custom_domain = true
 
 # --- production ---
 [env.production]
