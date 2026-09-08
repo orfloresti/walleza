@@ -26,6 +26,20 @@ binding = "ASSETS"
 # (Angular Router client-side navigation) — EXCEPT `/api/*`, which
 # `worker/index.ts` proxies before ever reaching this fallback.
 not_found_handling = "single-page-application"
+# Correction (found during PR6's real login test): without this,
+# Cloudflare's asset layer serves the SPA's `index.html` fallback directly
+# at the edge for any request that content-negotiates like a browser
+# navigation (`Accept: text/html`) — INCLUDING `/api/*` paths — before
+# `worker/index.ts`'s own fetch handler ever runs. Confirmed against the
+# real API: the same `/api/me` request returned the correct 401 JSON from
+# FastAPI with a generic `Accept: */*` (curl's default, falls through to
+# the Worker) but a cached `text/html` `index.html` (`cf-cache-status:
+# HIT`) with a browser-realistic `Accept: text/html,...` header — a real
+# browser always sends the latter, so every `/api/*` navigation silently
+# landed on the SPA shell instead of ever reaching the Worker's routing
+# logic. `run_worker_first` forces the Worker script to run before the
+# assets layer for the listed patterns, restoring the intended behavior.
+run_worker_first = ["/api/*"]
 # Cache-Control correction (task 6.6, design D6a) happens in
 # `worker/index.ts`'s `withCacheHeaders()`, not here: `index.html` and
 # `ngsw.json` are forced `no-cache` so a deploy is always visible on the
@@ -67,6 +81,7 @@ name = "walleza-web-staging"
 directory = "./dist/frontend/browser"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 [env.staging.vars]
 # Public: safe to commit (design D10 — "Google client ID is public"). Set
@@ -91,6 +106,7 @@ name = "walleza-web"
 directory = "./dist/frontend/browser"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 [env.production.vars]
 API_ORIGIN = "https://3idkehlclim2f733voqdiixwlq0smqlp.lambda-url.us-east-1.on.aws"
