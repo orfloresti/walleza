@@ -27,6 +27,12 @@ already gated by `require_membership` all along, and was already proven
 so end-to-end by `tests/categories/test_category_visibility.py` and
 `tests/transactions/test_transaction_visibility.py`; this structural
 meta-test simply did not walk those prefixes yet.
+
+`/api/transfers` was added to the prefix tuple here in Phase 3 PR1
+(tasks.md task 1.21, design RED #17) — with NO modification to this
+test's assertion logic, mirroring PR5's exact pattern above: it confirms
+the new `app.transfers.router` is fully gated by `require_membership`
+just like every other router on this list.
 """
 
 from __future__ import annotations
@@ -69,7 +75,13 @@ def test_every_workspace_and_accounts_route_requires_membership_except_bootstrap
         if not path or not methods:
             continue
         if not path.startswith(
-            ("/api/workspace", "/api/accounts", "/api/categories", "/api/transactions")
+            (
+                "/api/workspace",
+                "/api/accounts",
+                "/api/categories",
+                "/api/transactions",
+                "/api/transfers",
+            )
         ):
             continue
 

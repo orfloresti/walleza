@@ -162,10 +162,20 @@ def _alembic_config() -> Config:
 def migrated_db(
     real_postgres: _EphemeralPostgres, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[sa.Engine]:
-    """`upgrade head` on the shared ephemeral server, torn back down to
+    """Upgrade to exactly `0003` (this module's own revision, NOT literal
+    Alembic `head`) on the shared ephemeral server, torn back down to
     `base` after each test so tests in this module don't leak state into
     one another (the server itself is reused module-wide per
-    `real_postgres`)."""
+    `real_postgres`).
+
+    Pinned to `"0003"` rather than `"head"` — matching
+    `test_0002.py`'s own established precedent — so this module keeps
+    testing exactly the guarantees `0003_categories_transactions` makes,
+    independent of how many later revisions (`0004_transfers` onward) get
+    chained after it. The original `"head"` literal here was a latent gap
+    surfaced (not introduced) by Phase 3 adding `0004`: this migration's
+    own `_ALL_TABLES_AT_HEAD` name is a historical label from when `0003`
+    WAS head; it means "the tables that exist once `0003` is applied"."""
     from app.config import get_settings
 
     monkeypatch.setenv("WALLEZA_MIGRATIONS_DATABASE_URL", real_postgres.admin_url)
@@ -173,7 +183,7 @@ def migrated_db(
 
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0003")
     try:
         yield engine
     finally:
@@ -592,10 +602,12 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 def test_downgrade_one_step_drops_only_the_three_new_tables(
     real_postgres: _EphemeralPostgres, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`alembic downgrade -1` from head must drop exactly `category`,
+    """`alembic downgrade -1` from `0003` must drop exactly `category`,
     `transaction`, and `transaction_category_split`, leaving every
     `0001`/`0002` table (and its rows) intact — the FIRST of the two
-    explicitly-tested teardown paths (design "Rollback Plan")."""
+    explicitly-tested teardown paths (design "Rollback Plan"). Pinned to
+    `"0003"` rather than literal `"head"` — see `migrated_db`'s docstring
+    above for why."""
     from app.config import get_settings
 
     monkeypatch.setenv("WALLEZA_MIGRATIONS_DATABASE_URL", real_postgres.admin_url)
@@ -604,7 +616,7 @@ def test_downgrade_one_step_drops_only_the_three_new_tables(
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0003")
 
         with engine.connect() as conn:
             workspace_id, _account_id, _user_id = _seed_workspace_account_and_user(conn)
@@ -637,8 +649,8 @@ def test_downgrade_one_step_drops_only_the_three_new_tables(
             ).scalar()
         assert remaining_accounts == 2
 
-        # Re-upgrading head after a -1 downgrade must succeed cleanly too.
-        command.upgrade(cfg, "head")
+        # Re-upgrading to 0003 after a -1 downgrade must succeed cleanly too.
+        command.upgrade(cfg, "0003")
         inspector_after = sa.inspect(engine)
         assert set(inspector_after.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
     finally:
@@ -650,11 +662,13 @@ def test_downgrade_one_step_drops_only_the_three_new_tables(
 def test_downgrade_base_drops_every_product_table(
     real_postgres: _EphemeralPostgres, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`alembic downgrade base` from head must remove ALL product-domain
+    """`alembic downgrade base` from `0003` must remove ALL product-domain
     tables across `0001`/`0002`/`0003` — the SECOND of the two
     explicitly-tested teardown paths (design "Rollback Plan"), distinct
     from the single-step `-1` case above: this proves the full chain
-    tears down cleanly, not just this revision's own three tables."""
+    tears down cleanly, not just this revision's own three tables. Pinned
+    to `"0003"` rather than literal `"head"` — see `migrated_db`'s
+    docstring above for why."""
     from app.config import get_settings
 
     monkeypatch.setenv("WALLEZA_MIGRATIONS_DATABASE_URL", real_postgres.admin_url)
@@ -663,7 +677,7 @@ def test_downgrade_base_drops_every_product_table(
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0003")
 
         inspector = sa.inspect(engine)
         assert set(inspector.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
@@ -673,9 +687,9 @@ def test_downgrade_base_drops_every_product_table(
         inspector_after = sa.inspect(engine)
         assert set(inspector_after.get_table_names(schema="app")) == {"alembic_version"}
 
-        # Re-upgrading head after a full `base` downgrade must succeed
+        # Re-upgrading to 0003 after a full `base` downgrade must succeed
         # cleanly too, proving the chain is replayable in both directions.
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0003")
         inspector_replayed = sa.inspect(engine)
         assert set(inspector_replayed.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
     finally:

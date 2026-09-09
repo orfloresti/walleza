@@ -108,5 +108,26 @@
       "uploading": "Uploading…",
       "uploadError": "Could not upload that photo. Please try again."
     }
+  },
+  "transfers": {
+    "title": "Transfers",
+    "loading": "Loading transfers…",
+    "loadError": "Could not load transfers. Please try again.",
+    "create": "Add transfer",
+    "createTitle": "Add transfer",
+    "delete": "Delete",
+    "deleteError": "Could not delete that transfer. Please try again.",
+    "saveError": "Could not create that transfer. Please try again.",
+    "fromAccount": "From account",
+    "toAccount": "To account",
+    "selectAccount": "Select an account",
+    "amount": "Amount",
+    "date": "Date",
+    "notes": "Notes",
+    "filterAccount": "Account",
+    "filterDateFrom": "From",
+    "filterDateTo": "To",
+    "filterAll": "All",
+    "balanceNotice": "Transfers are recorded here but do not yet change any account balance — balance updates are coming in a future release."
   }
 }

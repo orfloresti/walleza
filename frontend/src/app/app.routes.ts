@@ -5,8 +5,8 @@ import { authGuard } from './core/auth/auth.guard';
 /**
  * First real routes (design D17) — the previously empty `app.routes.ts`
  * and the first real `authGuard` wiring since Phase 0 PR4 implemented
- * it, unwired. `workspace`, `accounts`, `categories`, and `transactions`
- * are all lazy feature modules per D17's convention
+ * it, unwired. `workspace`, `accounts`, `categories`, `transactions`,
+ * and `transfers` are all lazy feature modules per D17's convention
  * (`features/<feature>/<feature>.routes.ts`); `join/:token` is a single
  * guarded page living under `features/workspace/` — every one of these
  * needs `authGuard` at the parent level (design's frontend routing note:
@@ -15,9 +15,11 @@ import { authGuard } from './core/auth/auth.guard';
  * `''` redirects to `accounts` — design D35 explicitly keeps this
  * unchanged ("`''→'accounts'` redirect **unchanged**" — moving the
  * default landing page to the transaction feed is a product decision the
- * dashboard phase owns, not Phase 2's). `categories` and `transactions`
- * are added as peer lazy routes alongside `accounts`/`workspace`, per
- * design's own File Changes table entry for `app.routes.ts`.
+ * dashboard phase owns, not Phase 2's), and Phase 3's D44 keeps this
+ * redirect unchanged again for the same reason. `categories`,
+ * `transactions`, and `transfers` are added as peer lazy routes
+ * alongside `accounts`/`workspace`, per each phase's own design File
+ * Changes table entry for `app.routes.ts`.
  */
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'accounts' },
@@ -36,6 +38,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadChildren: () =>
       import('./features/transactions/transactions.routes').then((m) => m.routes),
+  },
+  {
+    path: 'transfers',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/transfers/transfers.routes').then((m) => m.routes),
   },
   {
     path: 'workspace',

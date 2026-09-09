@@ -17,6 +17,7 @@ from app.auth.router import router as auth_router
 from app.categories.router import router as categories_router
 from app.config import get_settings
 from app.transactions.router import router as transactions_router
+from app.transfers.router import router as transfers_router
 from app.workspace.router import bootstrap_router as workspace_bootstrap_router
 from app.workspace.router import router as workspace_router
 
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(accounts_router)
     app.include_router(categories_router)
     app.include_router(transactions_router)
+    app.include_router(transfers_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

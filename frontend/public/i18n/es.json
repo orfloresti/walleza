@@ -108,5 +108,26 @@
       "uploading": "Subiendo…",
       "uploadError": "No se pudo subir esa foto. Inténtalo de nuevo."
     }
+  },
+  "transfers": {
+    "title": "Transferencias",
+    "loading": "Cargando transferencias…",
+    "loadError": "No se pudieron cargar las transferencias. Inténtalo de nuevo.",
+    "create": "Añadir transferencia",
+    "createTitle": "Añadir transferencia",
+    "delete": "Eliminar",
+    "deleteError": "No se pudo eliminar esa transferencia. Inténtalo de nuevo.",
+    "saveError": "No se pudo crear esa transferencia. Inténtalo de nuevo.",
+    "fromAccount": "Cuenta de origen",
+    "toAccount": "Cuenta de destino",
+    "selectAccount": "Selecciona una cuenta",
+    "amount": "Monto",
+    "date": "Fecha",
+    "notes": "Notas",
+    "filterAccount": "Cuenta",
+    "filterDateFrom": "Desde",
+    "filterDateTo": "Hasta",
+    "filterAll": "Todas",
+    "balanceNotice": "Las transferencias quedan registradas aquí, pero todavía no modifican el saldo de ninguna cuenta — la actualización de saldos llegará en una próxima versión."
   }
 }
