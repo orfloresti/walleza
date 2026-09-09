@@ -5,19 +5,19 @@ import { authGuard } from './core/auth/auth.guard';
 /**
  * First real routes (design D17) — the previously empty `app.routes.ts`
  * and the first real `authGuard` wiring since Phase 0 PR4 implemented
- * it, unwired. `workspace` and `accounts` are both lazy feature modules
- * per D17's convention (`features/<feature>/<feature>.routes.ts`);
- * `join/:token` is a single guarded page living under
- * `features/workspace/` — every one of these needs `authGuard` at the
- * parent level (design's frontend routing note: "join/:token behind
- * authGuard").
+ * it, unwired. `workspace`, `accounts`, `categories`, and `transactions`
+ * are all lazy feature modules per D17's convention
+ * (`features/<feature>/<feature>.routes.ts`); `join/:token` is a single
+ * guarded page living under `features/workspace/` — every one of these
+ * needs `authGuard` at the parent level (design's frontend routing note:
+ * "join/:token behind authGuard").
  *
- * `''` redirects to `accounts` — design's final route shape (design's
- * "Frontend routes" line: "`''→'accounts'`, `accounts` and `workspace`
- * lazy `loadChildren` behind `authGuard`, `join/:token` behind
- * `authGuard`, `**→''`"). PR4 shipped an interim `''→'workspace'`
- * default because `accounts` did not exist yet; PR4b (this change)
- * completes the route shape now that it does.
+ * `''` redirects to `accounts` — design D35 explicitly keeps this
+ * unchanged ("`''→'accounts'` redirect **unchanged**" — moving the
+ * default landing page to the transaction feed is a product decision the
+ * dashboard phase owns, not Phase 2's). `categories` and `transactions`
+ * are added as peer lazy routes alongside `accounts`/`workspace`, per
+ * design's own File Changes table entry for `app.routes.ts`.
  */
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'accounts' },
@@ -25,6 +25,17 @@ export const routes: Routes = [
     path: 'accounts',
     canActivate: [authGuard],
     loadChildren: () => import('./features/accounts/accounts.routes').then((m) => m.routes),
+  },
+  {
+    path: 'categories',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/categories/categories.routes').then((m) => m.routes),
+  },
+  {
+    path: 'transactions',
+    canActivate: [authGuard],
+    loadChildren: () =>
+      import('./features/transactions/transactions.routes').then((m) => m.routes),
   },
   {
     path: 'workspace',

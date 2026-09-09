@@ -64,9 +64,10 @@ infra/
 ├── main.tf                # terraform block, required_providers, aws provider config
 ├── variables.tf           # environment, aws_region, github_repository, non-secret app config
 ├── outputs.tf             # function URL/ARN, deploy role ARN, OIDC provider ARN, SSM names
-├── lambda.tf              # Lambda function, Function URL, execution role + SSM/KMS read policy
+├── lambda.tf              # Lambda function, Function URL, execution role + SSM/KMS read + S3 read/write policy
 ├── oidc.tf                # GitHub OIDC provider (bootstrap-once) + deploy role + policy
-└── ssm.tf                 # SecureString parameters (placeholder values only, never real secrets)
+├── ssm.tf                 # SecureString parameters (placeholder values only, never real secrets)
+└── s3.tf                  # Receipt-photo attachments bucket (Phase 2 categories & transactions)
 ```
 
 ## Apply model: one apply per environment
@@ -142,6 +143,89 @@ aws lambda update-function-configuration \
     for the exact key list>
 aws lambda wait function-updated --function-name walleza-backend-<environment>
 ```
+
+## S3 Receipts Bucket (Phase 2 — Categories & Manual Transactions)
+
+`infra/s3.tf` adds an S3 bucket that stores receipt-photo attachments for the
+`transaction-attachments` capability (`sdd/phase-2-categories-transactions`
+design decisions D23-D27, D31). Backend code (a later PR) issues short-lived
+presigned POST/GET URLs (design D25/D26) so the browser talks to S3 directly
+— photo bytes never transit the Lambda body.
+
+- **Bucket**: `aws_s3_bucket.receipts`, named
+  `walleza-receipts-<environment>-<account_id>`. S3 bucket names are
+  globally unique, so the account id is appended to keep this project's
+  `/walleza/<environment>/...` naming spirit without a collision risk.
+- **Access**: `aws_s3_bucket_public_access_block.receipts` blocks all four
+  public-access vectors — the bucket is **never** public. Every read/write
+  goes through a presigned URL the backend issues only after its own
+  `visible_transactions` authorization check (design D24). SSE-S3
+  (`AES256`, not a customer KMS key — no CMK exists in this module and one
+  would also require `kms:GenerateDataKey` on the Lambda role plus KMS
+  headers in the presigned POST policy). Versioning is **disabled** — design
+  D23's overwrite-in-place semantics mean a deleted receipt must actually be
+  gone, not survive as a hidden prior version. `object_ownership =
+  BucketOwnerEnforced` (ACLs disabled entirely).
+- **CORS**: `aws_s3_bucket_cors_configuration.receipts` allows `POST`
+  (design D25's presigned-POST upload) and `GET`/`HEAD` (design D26's
+  presigned-GET download) from `var.web_origin` only.
+- **IAM**: `infra/lambda.tf`'s new `aws_iam_role_policy.lambda_s3_receipts`
+  ("s3-receipts") mirrors the existing `ssm-read` policy's shape exactly —
+  attached to the same `aws_iam_role.lambda_exec` role, scoped to
+  `s3:PutObject`/`s3:GetObject`/`s3:DeleteObject` on
+  `${aws_s3_bucket.receipts.arn}/workspaces/*` only, never account-wide and
+  never the bare bucket ARN. Deliberately no `s3:ListBucket` — the app never
+  enumerates the bucket, so a leaked presigned URL cannot be escalated into a
+  bucket listing.
+- **New variable**: `var.web_origin` (required, no default, per environment
+  — same shape as `google_redirect_uri`).
+- **New outputs**: `receipts_bucket_name`, `receipts_bucket_arn`.
+
+### ⚠️ `ignore_changes=[environment]` gotcha — same lesson as the SSM secrets above
+
+`lambda.tf`'s `aws_lambda_function.backend` has
+`lifecycle.ignore_changes = [..., environment]`. This means **a plain
+`terraform apply` against an ALREADY-EXISTING Lambda function will NOT push
+the two new environment variables** (`WALLEZA_S3_RECEIPTS_BUCKET`,
+`WALLEZA_S3_REGION`) into it, even though the bucket and the IAM policy are
+created for real. This is the exact same gotcha as "After the first apply:
+writing real secrets" above — it applies identically here because these two
+new plain variables are added to the SAME `environment { variables = ... }`
+block as everything else.
+
+After `terraform apply` creates the bucket, run, per environment:
+
+```bash
+aws lambda update-function-configuration \
+  --function-name walleza-backend-<environment> \
+  --environment file://<a JSON file with the FULL Variables map: every
+    existing key from lambda.tf's local.non_secret_env/local.secret_env at
+    its current real value, PLUS WALLEZA_S3_RECEIPTS_BUCKET set to this
+    apply's receipts_bucket_name output and WALLEZA_S3_REGION set to
+    var.aws_region>
+aws lambda wait function-updated --function-name walleza-backend-<environment>
+```
+
+`update-function-configuration` replaces the ENTIRE `Environment.Variables`
+map, not just the two new keys — omitting any existing key (e.g. a secret)
+un-sets it on the running function. Build the full map from the function's
+current configuration (`aws lambda get-function-configuration
+--function-name walleza-backend-<environment> --query
+'Environment.Variables'`) and add only the two new keys, rather than
+reconstructing the whole map from Terraform source by hand.
+
+A fresh environment's **first** `terraform apply` (no pre-existing Lambda
+function) does **not** hit this gotcha: `ignore_changes` only suppresses
+diffs on UPDATE, not on CREATE, so a brand-new function is created with
+both new variables already set correctly.
+
+Until the manual fix runs on an already-existing function, these two
+environment variables stay empty and the photo endpoints will fail at
+runtime (`s3_receipts_bucket`/`s3_region` resolve to `config.py`'s
+empty-string/default values) — every automated test still passes, because
+they fake the S3 client entirely (design D32), so this failure is invisible
+to CI. Catching it is exactly what task 5.7's one real per-environment
+upload smoke test is for.
 
 ## Wiring the GitHub Environment
 

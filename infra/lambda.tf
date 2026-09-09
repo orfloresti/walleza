@@ -33,6 +33,16 @@ locals {
     WALLEZA_GOOGLE_AUTHORIZATION_ENDPOINT = var.google_authorization_endpoint
     WALLEZA_GOOGLE_TOKEN_ENDPOINT         = var.google_token_endpoint
     WALLEZA_GOOGLE_REDIRECT_URI           = var.google_redirect_uri
+
+    # Receipt-photo S3 bucket (Phase 2 categories & transactions, design
+    # D31) — not a secret, so a plain env var like everything else in this
+    # map, never an SSM parameter. NOTE: on an ALREADY-EXISTING function,
+    # this lifecycle block's `ignore_changes = [environment]` (see below)
+    # means a plain `terraform apply` will NOT push these two new keys —
+    # see infra/README.md's "S3 Receipts Bucket" section for the required
+    # one-time `aws lambda update-function-configuration` per environment.
+    WALLEZA_S3_RECEIPTS_BUCKET = aws_s3_bucket.receipts.bucket
+    WALLEZA_S3_REGION          = var.aws_region
   }
 
   # Secrets resolved from SSM at apply time (see ssm.tf), excluding
@@ -116,6 +126,30 @@ resource "aws_iam_role_policy" "lambda_ssm_read" {
   name   = "ssm-read"
   role   = aws_iam_role.lambda_exec.id
   policy = data.aws_iam_policy_document.lambda_ssm_read.json
+}
+
+# Receipt-photo read/write access (Phase 2 categories & transactions,
+# design D24/D32), mirroring `lambda_ssm_read`'s exact shape: one policy
+# document, one `aws_iam_role_policy` attached to the SAME `lambda_exec`
+# role. Scoped to this bucket's `workspaces/*` prefix only — never the bare
+# bucket ARN, never account-wide — because every presigned URL the app ever
+# issues is signed with THIS role's credentials, so this policy is the true
+# ceiling on what any issued URL can ever do. Deliberately no
+# `s3:ListBucket`: the app never enumerates the bucket, so a leaked
+# presigned URL cannot be escalated into a bucket listing.
+data "aws_iam_policy_document" "lambda_s3_receipts" {
+  statement {
+    sid       = "ReadWriteOwnReceipts"
+    effect    = "Allow"
+    actions   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+    resources = ["${aws_s3_bucket.receipts.arn}/workspaces/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda_s3_receipts" {
+  name   = "s3-receipts"
+  role   = aws_iam_role.lambda_exec.id
+  policy = data.aws_iam_policy_document.lambda_s3_receipts.json
 }
 
 resource "aws_lambda_function" "backend" {

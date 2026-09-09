@@ -27,3 +27,13 @@ output "ssm_parameter_names" {
   description = "Full names of every SecureString parameter this environment expects a real value written into out of band (see ssm.tf's file header for the `aws ssm put-parameter --overwrite` command)."
   value       = { for k, v in aws_ssm_parameter.secret : k => v.name }
 }
+
+output "receipts_bucket_name" {
+  description = "Name of the S3 bucket storing receipt-photo attachments (Phase 2 categories & transactions). Needed for the manual `aws lambda update-function-configuration` fix on an already-existing function — see README.md's \"S3 Receipts Bucket\" section — since lambda.tf's `ignore_changes=[environment]` blocks WALLEZA_S3_RECEIPTS_BUCKET from reaching it via a plain apply."
+  value       = aws_s3_bucket.receipts.bucket
+}
+
+output "receipts_bucket_arn" {
+  description = "ARN of the S3 receipts bucket."
+  value       = aws_s3_bucket.receipts.arn
+}

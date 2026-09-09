@@ -10,6 +10,16 @@ Full account CRUD (`app/accounts/service.py`, `app/accounts/router.py`,
 `app/accounts/schemas.py`) and `GET /api/workspace/summary` (design D16)
 are built on top of this single function — see
 `sdd/phase-1-workspace-users-accounts/tasks` Phase 5/6 (PR3).
+
+Phase 2's `transaction-visibility` capability (design D30) formalizes this
+function as a REUSABLE BASE `Select`: `app.transactions.queries.
+visible_transactions(scope, ...)` JOINs the exact `Select` this function
+returns (called with no `archived` kwarg) as a subquery, rather than
+duplicating the personal-account predicate. This is a reuse-contract
+clarification only — every existing account-visibility guarantee (owner-
+only personal account visibility, list, direct lookup, balance
+aggregation) holds exactly as before; nothing below changed behavior for
+Phase 2.
 """
 
 from __future__ import annotations

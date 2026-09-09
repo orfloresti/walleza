@@ -1,21 +1,32 @@
-"""RED -> GREEN: every route mounted under `/api/workspace` or
-`/api/accounts` must resolve `app.deps.require_membership` somewhere in
-its dependant tree (design D14's second structural layer) — the single,
-deliberately allow-listed exception being `GET /api/workspace` itself
-(design D13: get-or-create must run BEFORE any membership row is
-guaranteed to exist, so that one route intentionally depends only on
-`get_current_user`).
+"""RED -> GREEN: every route mounted under `/api/workspace`, `/api/accounts`,
+`/api/categories`, or `/api/transactions` (including its
+`/api/transactions/{id}/photo/...` attachment sub-routes) must resolve
+`app.deps.require_membership` somewhere in its dependant tree (design
+D14's second structural layer) — the single, deliberately allow-listed
+exception being `GET /api/workspace` itself (design D13: get-or-create
+must run BEFORE any membership row is guaranteed to exist, so that one
+route intentionally depends only on `get_current_user`).
 
 A future endpoint that forgets `Depends(require_membership)`, or is
 mounted on the wrong router, fails THIS test — not a manual security
-review (spec RED #9, tasks.md task 2.3). `/api/accounts` routes do not
-exist yet in this PR (accounts CRUD is PR3); this test walks whatever
+review (spec RED #9, tasks.md task 2.3). This test walks whatever
 `create_app()` actually registers via `fastapi.routing.iter_route_contexts`
 (the same resolution `FastAPI.openapi()` itself uses internally, so it
 sees the FULLY MERGED, include-time dependant — router-level
 `dependencies=[Depends(require_membership)]` included — not just each
 route's own locally-declared dependencies), so it keeps proving the same
-guarantee once PR3 adds accounts routes, with no changes needed here.
+guarantee for any future router with no changes needed here beyond
+extending the path-prefix tuple below.
+
+`/api/categories` and `/api/transactions` were added to the prefix tuple
+here in PR5 (tasks.md task 6.10) — they were deliberately NOT added when
+PR2/PR3 introduced those routers (see `sdd/phase-2-categories-
+transactions/apply-progress`'s PR2 section for the confirmed, explicitly
+carried-forward gap this closes): every categories/transactions route WAS
+already gated by `require_membership` all along, and was already proven
+so end-to-end by `tests/categories/test_category_visibility.py` and
+`tests/transactions/test_transaction_visibility.py`; this structural
+meta-test simply did not walk those prefixes yet.
 """
 
 from __future__ import annotations
@@ -57,7 +68,9 @@ def test_every_workspace_and_accounts_route_requires_membership_except_bootstrap
         methods = route_context.methods
         if not path or not methods:
             continue
-        if not path.startswith(("/api/workspace", "/api/accounts")):
+        if not path.startswith(
+            ("/api/workspace", "/api/accounts", "/api/categories", "/api/transactions")
+        ):
             continue
 
         for method in methods - {"HEAD", "OPTIONS"}:

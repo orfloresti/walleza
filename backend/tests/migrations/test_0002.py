@@ -159,10 +159,18 @@ def _alembic_config() -> Config:
 def migrated_db(
     real_postgres: _EphemeralPostgres, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[sa.Engine]:
-    """`upgrade head` on the shared ephemeral server, torn back down to
-    `base` after each test so tests in this module don't leak state into
-    one another (the server itself is reused module-wide per
-    `real_postgres`)."""
+    """Pinned to the explicit "0002" revision rather than "head", on the
+    shared ephemeral server, torn back down to `base` after each test so
+    tests in this module don't leak state into one another (the server
+    itself is reused module-wide per `real_postgres`).
+
+    Pinned rather than "head" for the same reason
+    `test_baseline.py::test_baseline_creates_only_auth_tables_and_downgrades_cleanly`
+    pins to "0001": once `0003_categories_transactions` (Phase 2) exists,
+    "head" resolves past this revision, and this module's tests assert the
+    EXACT table set `0002` alone defines — not whatever the latest
+    revision happens to add.
+    """
     from app.config import get_settings
 
     monkeypatch.setenv("WALLEZA_MIGRATIONS_DATABASE_URL", real_postgres.admin_url)
@@ -170,7 +178,7 @@ def migrated_db(
 
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0002")
     try:
         yield engine
     finally:
@@ -391,6 +399,10 @@ def _seed_workspace_and_user(conn: sa.Connection) -> tuple[str, str]:
 def test_downgrade_one_step_drops_only_the_four_new_tables(
     real_postgres: _EphemeralPostgres, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Pinned to "0002" rather than "head" (see `migrated_db`'s docstring
+    above): once `0003_categories_transactions` exists, "head" resolves
+    past this revision and both the pre-/post-downgrade table-set
+    assertions below are specifically about `0002` in isolation."""
     from app.config import get_settings
 
     monkeypatch.setenv("WALLEZA_MIGRATIONS_DATABASE_URL", real_postgres.admin_url)
@@ -399,7 +411,7 @@ def test_downgrade_one_step_drops_only_the_four_new_tables(
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0002")
 
         with engine.connect() as conn:
             _workspace_id, user_id = _seed_workspace_and_user(conn)
@@ -433,8 +445,8 @@ def test_downgrade_one_step_drops_only_the_four_new_tables(
         assert remaining_users == 1
         assert remaining_sessions == 1
 
-        # Re-upgrading head after a -1 downgrade must succeed cleanly too.
-        command.upgrade(cfg, "head")
+        # Re-upgrading to 0002 after a -1 downgrade must succeed cleanly too.
+        command.upgrade(cfg, "0002")
         inspector_after = sa.inspect(engine)
         assert set(inspector_after.get_table_names(schema="app")) == {
             "app_user",

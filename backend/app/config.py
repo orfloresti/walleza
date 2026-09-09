@@ -93,6 +93,33 @@ class Settings(BaseSettings):
     # "short enough that a leaked, unused link stops working on its own".
     invite_ttl_days: int = 7
 
+    # Receipt-photo S3 bucket (design D31, `sdd/phase-2-categories-
+    # transactions`). Not a secret — the bucket name is in the host of every
+    # presigned URL the browser receives — so it arrives as a plain Lambda
+    # environment variable (`infra/lambda.tf`'s `local.non_secret_env`), not
+    # an SSM parameter, exactly like `google_client_id` above. Empty/default
+    # locally, same as every other field with no usable local default: no
+    # real bucket exists in this sandbox. The presign/upload flow itself
+    # (`app/storage.py`, `receipt_max_bytes`, `presigned_url_ttl_seconds`) is
+    # a later phase's addition; these two fields only give that later code
+    # somewhere to read the bucket identity from once the Lambda env vars
+    # are set (see `infra/README.md`'s "S3 Receipts Bucket" section for the
+    # `ignore_changes=[environment]` gotcha on an already-existing function).
+    s3_receipts_bucket: str = Field(default="")
+    s3_region: str = Field(default="us-east-1")
+
+    # Receipt-photo upload constraints and presigned-URL lifetime (design
+    # D25/D26/D32, PR5's actual consumer of the two fields above).
+    # `receipt_max_bytes` is the exact `content-length-range` upper bound
+    # `app.storage.presigned_upload` embeds in the presigned POST policy —
+    # enforced by S3 itself at upload time, never re-checked here after the
+    # fact (design D25's own rationale for choosing POST over PUT).
+    # `presigned_url_ttl_seconds` bounds BOTH the presigned POST (upload)
+    # and the presigned GET (download), matching design's stated 300s TTL
+    # for each.
+    receipt_max_bytes: int = 5 * 1024 * 1024
+    presigned_url_ttl_seconds: int = 300
+
     # Direct (non-pooled) Postgres connection, used ONLY by Alembic to run
     # DDL (design D2/D3). Supavisor's transaction pooler (`:6543`, used by
     # `database_url` above for runtime traffic) forbids server-side prepared

@@ -174,3 +174,18 @@ variable "google_redirect_uri" {
   description = "Must exactly match a redirect URI registered on this environment's Google OAuth client. Same-origin via the Cloudflare Worker (design D9), e.g. https://walleza.orfloresti.dev/api/auth/callback for production."
   type        = string
 }
+
+# --- Phase 2: Categories & Manual Transactions (S3 receipts bucket) ---
+
+variable "web_origin" {
+  description = <<-EOT
+    Browser origin allowed to call the receipts S3 bucket directly (CORS —
+    `infra/s3.tf`'s `aws_s3_bucket_cors_configuration.receipts`), for the
+    presigned-POST upload and presigned-GET download flow (design D24/D25/
+    D26). Required, per-environment, no default — same shape as
+    `google_redirect_uri` above, e.g. https://walleza.orfloresti.dev for
+    production. A wrong value fails only in the browser, at upload time, as
+    an opaque CORS error (see infra/README.md's smoke-test note).
+  EOT
+  type        = string
+}
