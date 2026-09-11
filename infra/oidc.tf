@@ -125,6 +125,24 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     ]
     resources = [aws_lambda_function.backend.arn]
   }
+
+  # Design D45/task 3.5: ci-cd.yml's "Update Lambda function code" step also
+  # pushes the same zip to the scheduler function and waits for it. Scoped
+  # to exactly those two calls — unlike the backend function, CI's "Record
+  # deployed version/commit" step never targets the scheduler function
+  # (infra/scheduler.tf's `local.scheduler_env` is Terraform-managed, not
+  # CI-managed), so `lambda:UpdateFunctionConfiguration` is deliberately
+  # omitted here.
+  statement {
+    sid    = "DeploySchedulerLambdaCode"
+    effect = "Allow"
+    actions = [
+      "lambda:UpdateFunctionCode",
+      "lambda:GetFunction",
+      "lambda:GetFunctionConfiguration",
+    ]
+    resources = [aws_lambda_function.scheduler.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "github_actions_deploy" {
