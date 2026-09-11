@@ -37,3 +37,8 @@ output "receipts_bucket_arn" {
   description = "ARN of the S3 receipts bucket."
   value       = aws_s3_bucket.receipts.arn
 }
+
+output "scheduler_function_name" {
+  description = "Name of the scheduler Lambda function (walleza-scheduler-<environment>), used by ci-cd.yml's deploy job's second `aws lambda update-function-code` call and by the manual smoke-test invoke (`aws lambda invoke --function-name <this>`)."
+  value       = aws_lambda_function.scheduler.function_name
+}

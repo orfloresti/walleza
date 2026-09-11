@@ -198,6 +198,11 @@ jobs:
           cd package && zip -r -q ../lambda.zip . -x '*.pyc' -x '__pycache__/*'
 
       - name: Update Lambda function code
+        # Both the HTTP function and the scheduler function (design D45,
+        # `infra/scheduler.tf`) ship from the SAME zip built above, in this
+        # SAME step — `set -euo pipefail` means either both updates succeed
+        # or the step fails before either `wait` call returns, so the two
+        # functions never drift to code from different commits.
         run: |
           set -euo pipefail
           FUNCTION_NAME="walleza-backend-${WALLEZA_ENVIRONMENT}"
@@ -206,6 +211,13 @@ jobs:
             --zip-file "fileb://backend/lambda.zip" \
             --publish
           aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+
+          SCHEDULER_FUNCTION_NAME="walleza-scheduler-${WALLEZA_ENVIRONMENT}"
+          aws lambda update-function-code \
+            --function-name "$SCHEDULER_FUNCTION_NAME" \
+            --zip-file "fileb://backend/lambda.zip" \
+            --publish
+          aws lambda wait function-updated --function-name "$SCHEDULER_FUNCTION_NAME"
 
       - name: Record deployed version/commit
         # Merge-only update: `update-function-configuration --environment`

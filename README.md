@@ -20,6 +20,41 @@ Open-source (MIT) personal finance web app for tracking shared and personal acco
 - **Auth**: Google OAuth
 - **CI/CD**: GitHub Actions
 
+## Architecture
+
+```mermaid
+flowchart LR
+    User["Browser / PWA"]
+    Google["Google OAuth"]
+    GH["GitHub Actions CI/CD"]
+
+    subgraph CF["Cloudflare"]
+        Worker["Worker\nSPA + /api/* proxy"]
+    end
+
+    subgraph AWS["AWS"]
+        Lambda["Lambda\nFastAPI backend (Mangum)"]
+        S3[("S3\nreceipts bucket")]
+    end
+
+    subgraph SB["Supabase"]
+        PG[("PostgreSQL")]
+    end
+
+    User -->|HTTPS| Worker
+    Worker -->|"/api/* + X-Origin-Token"| Lambda
+    Lambda --> PG
+    Lambda -->|presigned URLs| S3
+    User -.->|direct upload/download| S3
+    Lambda <-->|OAuth code exchange| Google
+    GH -->|deploy| Lambda
+    GH -->|deploy| Worker
+```
+
+Every architecture-changing phase updates this diagram (new infra, new
+compute, new external services) as part of that phase's own PR — it should
+always reflect what's actually deployed, not what's planned.
+
 ## Repository layout
 
 This is a monorepo with two independently buildable workspaces, joined only

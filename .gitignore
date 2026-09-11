@@ -24,4 +24,5 @@ Thumbs.db
 
 # Local-only, never committed
 .atl/
+.codegraph/
 /local/

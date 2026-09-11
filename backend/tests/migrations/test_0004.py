@@ -141,6 +141,14 @@ def _alembic_config() -> Config:
 def migrated_db(
     real_postgres: _EphemeralPostgres, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[sa.Engine]:
+    """Upgrade to exactly `0004` (this module's own revision, NOT literal
+    Alembic `head`) — mirrors `test_0003.py`'s own fix for the identical
+    gap, surfaced there by Phase 3 adding `0004` and here by Phase 4
+    adding `0005`: pinned so this module keeps testing exactly the
+    guarantees `0004_transfers` makes, independent of how many later
+    revisions (`0005_templates_and_recurring` onward) get chained after
+    it. `_ALL_TABLES_AT_HEAD`'s name is a historical label from when
+    `0004` WAS head."""
     from app.config import get_settings
 
     monkeypatch.setenv("WALLEZA_MIGRATIONS_DATABASE_URL", real_postgres.admin_url)
@@ -148,7 +156,7 @@ def migrated_db(
 
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0004")
     try:
         yield engine
     finally:
@@ -423,7 +431,7 @@ def test_downgrade_one_step_drops_only_the_transfer_table(
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0004")
 
         with engine.connect() as conn:
             workspace_id, from_account_id, to_account_id = _seed_workspace_and_accounts(conn)
@@ -466,7 +474,7 @@ def test_downgrade_one_step_drops_only_the_transfer_table(
             ).scalar()
         assert remaining_accounts == 2
 
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0004")
         inspector_after = sa.inspect(engine)
         assert set(inspector_after.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
     finally:
@@ -486,7 +494,7 @@ def test_downgrade_base_drops_every_product_table_including_transfer(
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0004")
 
         inspector = sa.inspect(engine)
         assert set(inspector.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
@@ -496,7 +504,7 @@ def test_downgrade_base_drops_every_product_table_including_transfer(
         inspector_after = sa.inspect(engine)
         assert set(inspector_after.get_table_names(schema="app")) == {"alembic_version"}
 
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0004")
         inspector_replayed = sa.inspect(engine)
         assert set(inspector_replayed.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
     finally:

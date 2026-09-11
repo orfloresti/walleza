@@ -33,6 +33,12 @@ meta-test simply did not walk those prefixes yet.
 test's assertion logic, mirroring PR5's exact pattern above: it confirms
 the new `app.transfers.router` is fully gated by `require_membership`
 just like every other router on this list.
+
+`/api/templates` and `/api/recurring` were added to the prefix tuple here
+in Phase 4 PR1 (tasks.md task 1.19), same pattern once more: both new
+routers are fully gated by `require_membership` — no application-level
+generation route is registered anywhere (occurrence generation, a later
+PR, has no REST contract at all per design).
 """
 
 from __future__ import annotations
@@ -81,6 +87,8 @@ def test_every_workspace_and_accounts_route_requires_membership_except_bootstrap
                 "/api/categories",
                 "/api/transactions",
                 "/api/transfers",
+                "/api/templates",
+                "/api/recurring",
             )
         ):
             continue

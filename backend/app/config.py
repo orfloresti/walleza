@@ -132,6 +132,16 @@ class Settings(BaseSettings):
     # derivation would produce.
     migrations_database_url: str | None = Field(default=None)
 
+    # Bounded catch-up cap for `app.recurring.generation` (design D48): the
+    # maximum number of missed occurrences a single recurrence generates in
+    # one scheduled run before PAUSING (leaving the cursor mid-backlog,
+    # never fast-forwarding past it — see `generation.py`'s module
+    # docstring). 120 is design's own chosen value: a daily job drains a
+    # 4-month backlog of a daily recurrence in one run, and a much longer
+    # dormancy converges over a few subsequent daily runs instead of one
+    # unbounded loop.
+    generation_max_catchup_per_run: int = 120
+
     @property
     def resolved_migrations_database_url(self) -> str:
         """The connection string Alembic must use to run DDL.

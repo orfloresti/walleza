@@ -189,3 +189,30 @@ variable "web_origin" {
   EOT
   type        = string
 }
+
+# --- Phase 4: Recurring & Scheduled Transactions (EventBridge schedule) ---
+
+variable "generation_schedule_enabled" {
+  description = <<-EOT
+    Whether the daily occurrence-generation EventBridge rule
+    (`aws_cloudwatch_event_rule.generation`, infra/eventbridge.tf) is
+    `ENABLED` or `DISABLED` (design D51). Defaults to `false` so the first
+    `terraform apply` per environment cannot fire generation before the
+    deploy/migration/smoke-test sequence in design's Migration/Rollout
+    section completes — flip to `true` and re-apply once smoke-tested
+    (tasks 3.9/3.11).
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "generation_schedule_expression" {
+  description = <<-EOT
+    EventBridge schedule expression for the daily occurrence-generation run
+    (design D51). `cron(0 6 * * ? *)` is 06:00 UTC daily, which is stably
+    00:00 in `America/Mexico_City` (Mexico abolished DST in 2022, permanent
+    UTC-6).
+  EOT
+  type        = string
+  default     = "cron(0 6 * * ? *)"
+}
