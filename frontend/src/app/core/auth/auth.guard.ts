@@ -1,9 +1,10 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { map } from 'rxjs';
+import { Observable, map, of, switchMap } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import { consumePostLoginRedirect, stashPostLoginRedirect } from './post-login-redirect';
+import { Workspace, WorkspaceService } from '../../features/workspace/data/workspace.service';
 
 /**
  * Blocks navigation to a non-public route until authentication
@@ -26,16 +27,40 @@ import { consumePostLoginRedirect, stashPostLoginRedirect } from './post-login-r
  *   bootstrap completes. If the stash already equals the current
  *   attempted URL (the replay itself), it is left alone and the
  *   navigation proceeds normally.
+ *
+ * Workspace bootstrap (design D13's `GET /api/workspace` get-or-create):
+ * every guarded route depends on `require_membership` (backend
+ * `app/deps.py`), which 403s for a user with zero `workspace_member`
+ * rows — and get-or-create is the ONLY thing that ever creates that
+ * first row. Nothing else in the app calls it automatically, and `''`
+ * redirects straight to `/accounts`, never `/workspace` — so without
+ * this step here, a brand-new user is permanently stuck 403ing on
+ * every page after their very first login. Cached via
+ * `WorkspaceService.workspace()`'s own signal so this only round-trips
+ * once per session, not on every navigation.
  */
 export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
+  const workspaceService = inject(WorkspaceService);
   const router = inject(Router);
 
   return authService.ensureAuthenticated().pipe(
-    map((authenticated) => {
+    switchMap((authenticated) => {
       if (!authenticated) {
         stashPostLoginRedirect(state.url);
         authService.redirectToLogin();
+        return of(false);
+      }
+
+      const cachedWorkspace = workspaceService.workspace();
+      const workspace$: Observable<Workspace> = cachedWorkspace
+        ? of(cachedWorkspace)
+        : workspaceService.getWorkspace();
+
+      return workspace$.pipe(map(() => true));
+    }),
+    map((authenticatedAndBootstrapped) => {
+      if (!authenticatedAndBootstrapped) {
         return false;
       }
 

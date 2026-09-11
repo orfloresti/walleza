@@ -87,11 +87,37 @@ describe('authGuard', () => {
     const resultPromise = firstValueFrom(guardResult as Observable<boolean>);
 
     httpMock.expectOne('/api/me').flush({ id: 'user-1', email: 'user@example.com' });
+    httpMock
+      .expectOne('/api/workspace')
+      .flush({ id: 'ws-1', name: 'Solo', members: [] });
 
     const canActivate = await resultPromise;
 
     expect(canActivate).toBe(true);
     expect(redirectSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not re-fetch the workspace on a second guarded navigation in the same session (cached via the workspace signal, mirroring AuthService.ensureAuthenticated\'s own /api/me caching)', async () => {
+    const guardResult1 = TestBed.runInInjectionContext(() =>
+      authGuard(DUMMY_ROUTE, DUMMY_STATE),
+    );
+    const resultPromise1 = firstValueFrom(guardResult1 as Observable<boolean>);
+    httpMock.expectOne('/api/me').flush({ id: 'user-1', email: 'user@example.com' });
+    httpMock
+      .expectOne('/api/workspace')
+      .flush({ id: 'ws-1', name: 'Solo', members: [] });
+    await resultPromise1;
+
+    const guardResult2 = TestBed.runInInjectionContext(() =>
+      authGuard(DUMMY_ROUTE, { url: '/transactions' } as RouterStateSnapshot),
+    );
+    const canActivate = await firstValueFrom(guardResult2 as Observable<boolean>);
+
+    // Neither /api/me nor /api/workspace fire again — AuthService's own
+    // shareReplay caches the first, and the guard's cachedWorkspace check
+    // (workspaceService.workspace()) short-circuits the second.
+    httpMock.verify();
+    expect(canActivate).toBe(true);
   });
 
   it('stashes the attempted URL before redirecting an unauthenticated visitor to login (deep-link preservation, task 7.1/7.4)', async () => {
@@ -124,6 +150,9 @@ describe('authGuard', () => {
     const resultPromise = firstValueFrom(guardResult as Observable<boolean | UrlTree>);
 
     httpMock.expectOne('/api/me').flush({ id: 'user-1', email: 'user@example.com' });
+    httpMock
+      .expectOne('/api/workspace')
+      .flush({ id: 'ws-1', name: 'Solo', members: [] });
     const result = await resultPromise;
 
     expect(result).toBeInstanceOf(UrlTree);
@@ -141,6 +170,9 @@ describe('authGuard', () => {
     const resultPromise = firstValueFrom(guardResult as Observable<boolean | UrlTree>);
 
     httpMock.expectOne('/api/me').flush({ id: 'user-1', email: 'user@example.com' });
+    httpMock
+      .expectOne('/api/workspace')
+      .flush({ id: 'ws-1', name: 'Solo', members: [] });
     const result = await resultPromise;
 
     expect(result).toBe(true);
