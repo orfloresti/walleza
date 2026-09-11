@@ -42,3 +42,8 @@ output "scheduler_function_name" {
   description = "Name of the scheduler Lambda function (walleza-scheduler-<environment>), used by ci-cd.yml's deploy job's second `aws lambda update-function-code` call and by the manual smoke-test invoke (`aws lambda invoke --function-name <this>`)."
   value       = aws_lambda_function.scheduler.function_name
 }
+
+output "ses_dkim_records" {
+  description = "DKIM CNAME record tokens (design D52). For each token, add a CNAME record named \"<token>._domainkey.<ses_domain>\" pointing at \"<token>.dkim.amazonses.com\" to the ses_domain's Cloudflare DNS zone. Terraform cannot complete this step; verification is asynchronous (minutes, up to 72h) — confirm with `aws sesv2 get-email-identity --email-identity <ses_domain>` reporting VerifiedForSendingStatus: true."
+  value       = aws_ses_domain_dkim.this.dkim_tokens
+}

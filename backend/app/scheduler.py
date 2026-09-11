@@ -14,8 +14,14 @@ that could regress.
 `handler(event, context)` reads NO field of `event` at all (design's
 threat case 2: a crafted payload naming a victim workspace/recurrence/
 `today` must have zero effect). `today` always comes from the real clock
-here — `app.recurring.generation.run` takes it as an explicit parameter
-so tests never depend on wall-clock time.
+here — `app.recurring.generation.run`/`run_reminders` take it as an
+explicit parameter so tests never depend on wall-clock time.
+
+Pass A (occurrence generation) and Pass B (reminders, design D54) run
+SEQUENTIALLY in the same invocation, each with its own independent
+per-recurrence commit boundary — never a shared transaction. Pass B
+deliberately runs AFTER Pass A so a recurrence caught up by Pass A is
+evaluated against its freshly-advanced `next_date`.
 """
 
 from __future__ import annotations
@@ -28,12 +34,15 @@ from app.db import SessionLocal
 from app.recurring import generation
 
 
-def handler(event: Any, context: Any) -> dict[str, int]:
+def handler(event: Any, context: Any) -> dict[str, dict[str, int]]:
     """Entry point invoked by the EventBridge rule (design D51). `event`
     and `context` are the AWS Lambda invocation arguments; neither is
     read, by design — see the module docstring and design's threat case
-    2. Returns the same summary dict `generation.run` returns, useful only
-    for CloudWatch log inspection, never consumed by any caller."""
+    2. Returns `{"generation": ..., "reminders": ...}`, the two summary
+    dicts `generation.run`/`run_reminders` return, useful only for
+    CloudWatch log inspection, never consumed by any caller."""
     today = datetime.now(UTC).date()
     with closing(SessionLocal()) as db:
-        return generation.run(db, today=today)
+        generation_counts = generation.run(db, today=today)
+        reminder_counts = generation.run_reminders(db, today=today)
+    return {"generation": generation_counts, "reminders": reminder_counts}

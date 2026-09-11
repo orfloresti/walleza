@@ -19,7 +19,10 @@ import { authGuard } from './core/auth/auth.guard';
  * redirect unchanged again for the same reason. `categories`,
  * `transactions`, and `transfers` are added as peer lazy routes
  * alongside `accounts`/`workspace`, per each phase's own design File
- * Changes table entry for `app.routes.ts`.
+ * Changes table entry for `app.routes.ts`. Phase 4's `templates` and
+ * `recurring` (design D56) are added the same way — `recurring`'s child
+ * routes ALSO define the Subscriptions view (`/recurring/subscriptions`),
+ * so no separate `subscriptions` top-level path exists here.
  */
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'accounts' },
@@ -43,6 +46,16 @@ export const routes: Routes = [
     path: 'transfers',
     canActivate: [authGuard],
     loadChildren: () => import('./features/transfers/transfers.routes').then((m) => m.routes),
+  },
+  {
+    path: 'templates',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/templates/templates.routes').then((m) => m.routes),
+  },
+  {
+    path: 'recurring',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/recurring/recurring.routes').then((m) => m.routes),
   },
   {
     path: 'workspace',

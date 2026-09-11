@@ -142,6 +142,21 @@ class Settings(BaseSettings):
     # unbounded loop.
     generation_max_catchup_per_run: int = 120
 
+    # SESv2 reminder email sending (design D52-D54, `recurring-reminders`,
+    # `app/notifications/ses.py`/`templates.py`). Empty/default locally and
+    # in this sandbox — no real SES identity exists here; a real value is
+    # required before `app.recurring.generation.run_reminders` can send for
+    # real. `ses_from_address` is the exact From address design D53's IAM
+    # `ses:FromAddress` condition permits the scheduler role to send as.
+    ses_from_address: str = Field(default="")
+    ses_region: str = Field(default="us-east-1")
+
+    # Frontend origin surfaced in the reminder email body (design D54's Data
+    # Flow) so a recipient can click through to manage the recurrence that
+    # generated the reminder. Local default only — no real deployment
+    # exists in this sandbox.
+    web_app_url: str = Field(default="http://localhost:4200")
+
     @property
     def resolved_migrations_database_url(self) -> str:
         """The connection string Alembic must use to run DDL.

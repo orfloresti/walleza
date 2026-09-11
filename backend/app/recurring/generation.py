@@ -56,6 +56,20 @@ daily run picks it back up from its last durable cursor position. This is
 NOT one commit for the whole batch — a single commit for 500 due
 recurrences would mean a crash on the 499th loses all 498 that already
 completed successfully.
+
+Pass B — reminders (design D54) — is an INDEPENDENT pass with its OWN
+per-recurrence commit boundary, never mixed into Pass A's transaction:
+`run_reminders` re-scans `next_date` (already advanced by Pass A, if
+`run()` was called first in the same invocation, as `app.scheduler.handler`
+does) and, for each due reminder, sends BEFORE marking
+`last_reminded_for_date` — "send first, then commit the mark" (at-least-
+once): mark-then-send would lose a reminder permanently on any transient
+SES throttle, and no client idempotency key exists on SESv2 `SendEmail` to
+close the crash-between-send-and-commit window any other way. Recipient
+resolution reuses `scope_for_recurrence` (D46) so a departed creator's
+membership pauses the reminder exactly like it pauses generation, and
+resolves the email from `app.app_user` — never from any other workspace
+member, even on a shared-account recurrence.
 """
 
 from __future__ import annotations
@@ -69,8 +83,14 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.accounts.models import Account
+from app.accounts.queries import visible_accounts
+from app.auth.session import app_user_table
+from app.categories.models import Category
 from app.config import get_settings
 from app.deps import WorkspaceScope
+from app.notifications import ses
+from app.notifications.templates import render_reminder
 from app.recurring.models import (
     RecurringOccurrence,
     RecurringTransaction,
@@ -265,4 +285,167 @@ def run(db: Session, *, today: date) -> dict[str, int]:
             counts["locked"] += 1
         elif outcome == "error":
             counts["errors"] += 1
+    return counts
+
+
+def _category_names_for(db: Session, recurring_id: uuid.UUID) -> list[str]:
+    return list(
+        db.execute(
+            sa.select(Category.name)
+            .join(
+                RecurringTransactionSplit,
+                RecurringTransactionSplit.category_id == Category.id,
+            )
+            .where(RecurringTransactionSplit.recurring_transaction_id == recurring_id)
+            .order_by(Category.name)
+        ).scalars()
+    )
+
+
+def _due_reminder_ids(db: Session, *, today: date) -> list[uuid.UUID]:
+    """Design D54's Pass B predicate, matched exactly: `reminder_days_before
+    IS NOT NULL AND next_date > today AND next_date - reminder_days_before
+    <= today`. Cross-workspace and scopeless, same discipline as Pass A's
+    `run()` scan (design's Data Flow ①) — every write below re-derives its
+    own scope via `scope_for_recurrence`, never trusting this scan's rows
+    directly."""
+    # `sa.cast(..., sa.Date)` is deliberate: `Date - Integer` has no
+    # SQLAlchemy-generic result type of its own (unlike `Date - Interval`),
+    # so leaving it uncast risks the `<= today` bind parameter compiling
+    # with an ambiguous type. Postgres itself already returns a `date` for
+    # `date - integer` — the cast simply tells SQLAlchemy what the database
+    # already guarantees.
+    return list(
+        db.execute(
+            sa.select(RecurringTransaction.id)
+            .where(
+                RecurringTransaction.reminder_days_before.is_not(None),
+                RecurringTransaction.next_date > today,
+                sa.cast(
+                    RecurringTransaction.next_date - RecurringTransaction.reminder_days_before,
+                    sa.Date,
+                )
+                <= today,
+            )
+            .order_by(RecurringTransaction.next_date, RecurringTransaction.id)
+        ).scalars()
+    )
+
+
+def _send_reminder_for_recurrence(db: Session, recurring_id: uuid.UUID, *, today: date) -> str:
+    """Process exactly one due reminder in its OWN database transaction —
+    an INDEPENDENT commit boundary from Pass A's per-recurrence transaction
+    (design D54's module docstring). Returns one of: `"locked"` (another
+    run owns this row right now), `"not_due"`/`"already_sent"` (re-checked
+    under lock and no longer applicable — a concurrent Pass A/reminder run
+    already changed the row), `"paused"` (no sanctioned scope, or the
+    recurrence is past `ends_on`), `"sent"` (the reminder was sent and the
+    mark committed), or `"error"` (SES raised; nothing committed, so a
+    later run retries — send-first-then-commit-the-mark, D54)."""
+    row = db.execute(
+        sa.select(RecurringTransaction)
+        .where(RecurringTransaction.id == recurring_id)
+        .with_for_update(skip_locked=True)
+    ).scalar_one_or_none()
+    if row is None:
+        db.rollback()
+        return "locked"
+
+    # Re-verify every predicate under lock — the outer scan in
+    # `_due_reminder_ids` is a cheap, unlocked snapshot that a concurrent
+    # Pass A run (or a prior reminder run earlier in this same pass) may
+    # have already invalidated.
+    if row.reminder_days_before is None or row.next_date <= today:
+        db.rollback()
+        return "not_due"
+    if (row.next_date - timedelta(days=row.reminder_days_before)) > today:
+        db.rollback()
+        return "not_due"
+    if row.last_reminded_for_date is not None and row.last_reminded_for_date == row.next_date:
+        # Send-once per due date (design D54's send-once semantics): a
+        # same-day re-run before the occurrence date passes must not resend.
+        db.rollback()
+        return "already_sent"
+    if row.ends_on is not None and row.next_date > row.ends_on:
+        # Same termination predicate generation's own catch-up loop uses —
+        # a recurrence past its end never gets a reminder either.
+        db.rollback()
+        return "paused"
+
+    scope = scope_for_recurrence(db, row)
+    if scope is None:
+        logger.warning(
+            "recurring_transaction %s reminder skipped: creator %s is no longer a "
+            "member of workspace %s",
+            row.id,
+            row.created_by_user_id,
+            row.workspace_id,
+        )
+        db.rollback()
+        return "paused"
+
+    email_row = db.execute(
+        sa.select(app_user_table.c.email).where(
+            app_user_table.c.id == row.created_by_user_id
+        )
+    ).first()
+    if email_row is None:
+        # Structurally unreachable (design D50: created_by_user_id is
+        # NOT NULL/CASCADE, so the row would be gone too) — defensive only.
+        db.rollback()
+        return "paused"
+
+    account = db.execute(
+        visible_accounts(scope).where(Account.id == row.account_id)
+    ).scalar_one_or_none()
+    if account is None:
+        db.rollback()
+        return "paused"
+
+    settings = get_settings()
+    subject, body = render_reminder(
+        locale=row.reminder_locale,
+        type=row.type,
+        amount=row.amount,
+        currency=account.currency,
+        account_name=account.name,
+        occurrence_date=row.next_date,
+        web_app_url=settings.web_app_url,
+        category_names=_category_names_for(db, row.id) or None,
+    )
+
+    try:
+        ses.send_email(to_address=email_row.email, subject=subject, body_text=body)
+    except Exception:
+        db.rollback()
+        logger.exception("recurring_transaction %s reminder send failed", recurring_id)
+        return "error"
+
+    # Send-first-then-commit-the-mark (design D54): the mark is written and
+    # committed only AFTER SES has already accepted the message.
+    row.last_reminded_for_date = row.next_date
+    db.commit()
+    return "sent"
+
+
+def run_reminders(db: Session, *, today: date) -> dict[str, int]:
+    """Pass B: reminders (design D54). Independent of Pass A's `run()` —
+    its own scan, its own per-recurrence commit boundary, never sharing a
+    transaction with Pass A. `today` is a parameter for the same reason
+    `run`'s is: deterministic tests, with `app.scheduler.handler` the only
+    place `datetime.now()` appears."""
+    due_ids = _due_reminder_ids(db, today=today)
+    counts = {"due": len(due_ids), "sent": 0, "paused": 0, "locked": 0, "skipped": 0, "errors": 0}
+    for recurring_id in due_ids:
+        outcome = _send_reminder_for_recurrence(db, recurring_id, today=today)
+        if outcome == "sent":
+            counts["sent"] += 1
+        elif outcome == "paused":
+            counts["paused"] += 1
+        elif outcome == "locked":
+            counts["locked"] += 1
+        elif outcome == "error":
+            counts["errors"] += 1
+        else:
+            counts["skipped"] += 1
     return counts

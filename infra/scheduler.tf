@@ -17,19 +17,30 @@ locals {
   scheduler_function_name = "walleza-scheduler-${var.environment}"
 
   # Minimal environment this function actually needs to open a DB session
-  # and run `app.recurring.generation.run` (see backend/app/scheduler.py
-  # and backend/app/config.py::Settings) — deliberately NOT the backend
-  # function's full `local.non_secret_env`/`local.secret_env` maps (no
-  # JWT/OAuth/S3 settings; the scheduler never authenticates a caller and
-  # never touches receipts). `WALLEZA_DATABASE_URL` reuses the SAME SSM
+  # and run `app.recurring.generation.run`/`run_reminders` (see
+  # backend/app/scheduler.py and backend/app/config.py::Settings) —
+  # deliberately NOT the backend function's full `local.non_secret_env`/
+  # `local.secret_env` maps (no JWT/OAuth settings; the scheduler never
+  # authenticates a caller). `WALLEZA_DATABASE_URL` reuses the SAME SSM
   # secret data source `infra/lambda.tf` already reads (`ssm.tf`), so both
   # functions always point at the same database with no drift risk.
+  #
+  # `WALLEZA_SES_FROM_ADDRESS`/`WALLEZA_SES_REGION`/`WALLEZA_WEB_APP_URL`
+  # (design D54, PR4) are added here — not secrets, so plain env vars like
+  # `google_client_id` on the backend function — so `app.notifications.ses`/
+  # `app.recurring.generation.run_reminders` have somewhere to read the
+  # From address, SES region, and reminder-body web app link from, once
+  # this environment's SES identity is actually verified (tasks 4.14-4.18).
   scheduler_env = {
     WALLEZA_ENVIRONMENT = var.environment
     WALLEZA_APP_VERSION = var.app_version
     WALLEZA_COMMIT_SHA  = "unknown"
 
     WALLEZA_DATABASE_URL = data.aws_ssm_parameter.secret["database_url"].value
+
+    WALLEZA_SES_FROM_ADDRESS = var.ses_from_address
+    WALLEZA_SES_REGION       = var.aws_region
+    WALLEZA_WEB_APP_URL      = var.web_app_url
   }
 }
 

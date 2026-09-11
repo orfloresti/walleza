@@ -216,3 +216,48 @@ variable "generation_schedule_expression" {
   type        = string
   default     = "cron(0 6 * * ? *)"
 }
+
+# --- Phase 4: Recurring & Scheduled Transactions (SES reminders) ------
+
+variable "ses_domain" {
+  description = <<-EOT
+    Per-environment SES domain identity (design D52): "orfloresti.dev" for
+    production, "staging.orfloresti.dev" for staging. Required, no default
+    — this module is applied twice into the same AWS account/region, and
+    two applies declaring the same domain would contend for one global SES
+    resource across two independent Terraform states.
+  EOT
+  type        = string
+}
+
+variable "ses_from_address" {
+  description = <<-EOT
+    Exact From address the scheduler function's execution role is permitted
+    to send as (design D53's `ses:FromAddress` IAM condition — the true
+    ceiling on what the deployed code can ever send as). Required, no
+    default, e.g. reminders@orfloresti.dev for production.
+  EOT
+  type        = string
+}
+
+variable "ses_sandbox_verified_recipients" {
+  description = <<-EOT
+    Addresses to verify as individual SES email identities (design D52).
+    Required while this environment's SES account remains in the sandbox:
+    a sandboxed account can only send TO a verified identity, not merely
+    FROM a verified domain. Each address triggers a real click-the-link
+    verification email — Terraform cannot complete that step. Required, no
+    default.
+  EOT
+  type        = list(string)
+}
+
+variable "web_app_url" {
+  description = <<-EOT
+    Frontend origin surfaced in the reminder email body (design D54's Data
+    Flow diagram) so a recipient can click through to manage the recurrence
+    that generated the reminder. Required, no default, e.g.
+    https://walleza.orfloresti.dev for production.
+  EOT
+  type        = string
+}
