@@ -227,6 +227,26 @@ they fake the S3 client entirely (design D32), so this failure is invisible
 to CI. Catching it is exactly what task 5.7's one real per-environment
 upload smoke test is for.
 
+### ⚠️ `generation_schedule_enabled` gotcha (Phase 4 — Recurring & Scheduled Transactions)
+
+`variables.tf`'s `generation_schedule_enabled` defaults to `false`, and
+`eventbridge.tf`'s `aws_cloudwatch_event_rule.generation` reads its `state`
+directly from that variable — there is no `ignore_changes` protecting it.
+The rule was armed for real (`state = "ENABLED"`) in both `staging` and
+`production` by passing `-var generation_schedule_enabled=true` on the
+command line at apply time; that value is **not** persisted anywhere (this
+repo never commits a real `.tfvars` file — see `.gitignore`).
+
+**A future plain `terraform apply` against either state file that omits
+this flag will silently flip the rule back to `DISABLED`.** There is no
+error, no warning — the daily occurrence-generation/reminder job just stops
+firing. Always include `-var generation_schedule_enabled=true` on every
+real apply against an already-armed environment, and verify after applying:
+
+```bash
+aws events describe-rule --name walleza-generation-<environment> --query State
+```
+
 ## Wiring the GitHub Environment
 
 For each of the `staging`/`production` GitHub Environments (Settings >

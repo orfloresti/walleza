@@ -104,17 +104,16 @@ resource "aws_lambda_function" "scheduler" {
   # Design D47/D51 calls for `reserved_concurrent_executions = 1` here as a
   # platform-level guard against two overlapping scheduled runs, on top of
   # the per-recurrence `SELECT ... FOR UPDATE SKIP LOCKED` row lock in
-  # `app/recurring/generation.py`. DEVIATION (documented, not silent):
-  # omitted for now because this AWS account's total Lambda concurrency
-  # limit is 10 — the AWS-wide floor of 10 unreserved executions makes ANY
-  # reservation impossible until the account's quota is raised above 10
-  # (confirmed via `aws lambda get-account-settings`; a Service Quotas
-  # self-service increase was rejected because the account is below its own
-  # stated default of 1000, indicating a temporary new-account throttle).
-  # Correctness does not depend on this setting — D47's actual idempotency/
-  # concurrency guarantee is the DB row lock plus `recurring_occurrence`'s
-  # primary key, both already shipped and tested in PR2. Re-add this line
-  # once the account's concurrency quota clears above 10.
+  # `app/recurring/generation.py`. PERMANENT DEVIATION (documented, not
+  # silent, decision accepted by the project owner): this AWS account's
+  # total Lambda concurrency limit is fixed at 10 and will not be raised —
+  # the AWS-wide floor of 10 unreserved executions makes ANY reservation on
+  # ANY function impossible at that ceiling, so this setting can never be
+  # applied on this account. Correctness does not depend on it: D47's
+  # actual idempotency/concurrency guarantee is the DB row lock plus
+  # `recurring_occurrence`'s primary key (both shipped and tested in PR2),
+  # which is sufficient on its own per design's own risk analysis. This
+  # line is intentionally omitted for good, not pending anything.
 
   environment {
     variables = local.scheduler_env
