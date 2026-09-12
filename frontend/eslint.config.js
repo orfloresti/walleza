@@ -26,8 +26,11 @@ module.exports = defineConfig([
       '@angular-eslint/component-selector': [
         'error',
         {
+          // `app-*` for feature pages/components; `ui-*` for the shared
+          // design-system kit (design D57) — visually and semantically
+          // distinct from a feature's own components.
           type: 'element',
-          prefix: 'app',
+          prefix: ['app', 'ui'],
           style: 'kebab-case',
         },
       ],
