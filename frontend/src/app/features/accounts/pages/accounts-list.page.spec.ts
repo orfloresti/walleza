@@ -74,6 +74,10 @@ describe('AccountsListPage', () => {
                 isPersonal: 'Personal account',
                 create: 'Create',
                 createError: 'Could not create that account.',
+                empty: {
+                  title: 'No accounts yet',
+                  body: 'Create your first account to get started.',
+                },
               },
             },
           },
@@ -171,6 +175,17 @@ describe('AccountsListPage', () => {
     // createAccount() reloads the list afterwards.
     httpMock.expectOne((r) => r.url === '/api/accounts').flush([]);
     await fixture.whenStable();
+  });
+
+  it('renders the empty state, and no accounts list, when there are no accounts (task 7.4)', async () => {
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url === '/api/accounts').flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="accounts-empty"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="accounts-list"]')).toBeFalsy();
   });
 
   it('clicking archive calls PATCH /api/accounts/{id} with { archived: true }, never DELETE (task focus)', async () => {

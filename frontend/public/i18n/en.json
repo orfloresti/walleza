@@ -43,7 +43,11 @@
     "initialFunds": "Initial funds",
     "isPersonal": "Personal account",
     "create": "Create account",
-    "createError": "Could not create that account. Please try again."
+    "createError": "Could not create that account. Please try again.",
+    "empty": {
+      "title": "No accounts yet",
+      "body": "Create your first account to get started."
+    }
   },
   "summary": {
     "title": "Summary",
