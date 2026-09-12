@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { TranslocoPipe } from '@jsverse/transloco';
 
+import { UiAlertComponent, UiEmptyStateComponent, UiLoadingComponent } from '../../../shared/ui';
 import { WorkspaceService } from '../data/workspace.service';
 
 type JoinStatus = 'pending' | 'success' | 'invalid' | 'conflict' | 'error';
@@ -23,27 +23,38 @@ type JoinStatus = 'pending' | 'success' | 'invalid' | 'conflict' | 'error';
  * workspace must be solo and empty" precondition) — so this page
  * bootstraps the caller's own solo workspace FIRST, then accepts the
  * invite.
+ *
+ * Phase UI (PR5) — migrated to the `shared/ui/` kit (D64-style structural
+ * branching): `pending` renders `ui-loading`, `success` renders
+ * `ui-empty-state` (the kit's only title+message container, reused here
+ * as a completion card since no dedicated "success" component exists),
+ * and `invalid`/`conflict`/`error` render `ui-alert variant="error"`
+ * (matching the `role="alert"` each already carried).
  */
 @Component({
   selector: 'app-join-page',
-  imports: [TranslocoPipe],
+  imports: [UiLoadingComponent, UiEmptyStateComponent, UiAlertComponent],
   template: `
-    <section>
+    <section class="mx-auto w-full max-w-md px-4 py-6">
       @switch (status()) {
         @case ('pending') {
-          <p>{{ 'join.pending' | transloco }}</p>
+          <ui-loading messageKey="join.pending" testId="join-pending" />
         }
         @case ('success') {
-          <p>{{ 'join.success' | transloco }}</p>
+          <ui-empty-state
+            testId="join-success"
+            titleKey="join.successTitle"
+            messageKey="join.success"
+          />
         }
         @case ('invalid') {
-          <p role="alert">{{ 'join.invalid' | transloco }}</p>
+          <ui-alert variant="error" messageKey="join.invalid" testId="join-invalid" />
         }
         @case ('conflict') {
-          <p role="alert">{{ 'join.conflict' | transloco }}</p>
+          <ui-alert variant="error" messageKey="join.conflict" testId="join-conflict" />
         }
         @case ('error') {
-          <p role="alert">{{ 'join.error' | transloco }}</p>
+          <ui-alert variant="error" messageKey="join.error" testId="join-error" />
         }
       }
     </section>

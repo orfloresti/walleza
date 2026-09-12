@@ -1,11 +1,35 @@
-<nav aria-label="Main navigation" class="flex flex-wrap gap-4 border-b border-gray-200 px-4 py-3">
-  <a routerLink="/accounts" routerLinkActive="font-semibold text-blue-700" class="text-gray-700 hover:text-blue-700">{{ 'accounts.title' | transloco }}</a>
-  <a routerLink="/transactions" routerLinkActive="font-semibold text-blue-700" class="text-gray-700 hover:text-blue-700">{{ 'transactions.title' | transloco }}</a>
-  <a routerLink="/categories" routerLinkActive="font-semibold text-blue-700" class="text-gray-700 hover:text-blue-700">{{ 'categories.title' | transloco }}</a>
-  <a routerLink="/transfers" routerLinkActive="font-semibold text-blue-700" class="text-gray-700 hover:text-blue-700">{{ 'transfers.title' | transloco }}</a>
-  <a routerLink="/templates" routerLinkActive="font-semibold text-blue-700" class="text-gray-700 hover:text-blue-700">{{ 'templates.title' | transloco }}</a>
-  <a routerLink="/recurring" routerLinkActive="font-semibold text-blue-700" class="text-gray-700 hover:text-blue-700">{{ 'recurring.title' | transloco }}</a>
-  <a routerLink="/workspace" routerLinkActive="font-semibold text-blue-700" class="text-gray-700 hover:text-blue-700">{{ 'workspace.title' | transloco }}</a>
-</nav>
+<header class="border-b border-border bg-surface">
+  <nav aria-label="Main navigation" class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-3">
+    <span class="text-lg font-semibold text-on-surface">{{ 'app.title' | transloco }}</span>
 
-<router-outlet />
+    <button
+      type="button"
+      class="inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-variant md:hidden"
+      [attr.aria-expanded]="menuOpen()"
+      aria-controls="main-nav-links"
+      data-testid="nav-menu-toggle"
+      (click)="menuOpen.set(!menuOpen())"
+    >
+      {{ 'common.menu.toggle' | transloco }}
+    </button>
+
+    <ul
+      id="main-nav-links"
+      class="w-full flex-col gap-1 md:flex md:w-auto md:flex-row md:gap-6"
+      [class.flex]="menuOpen()"
+      [class.hidden]="!menuOpen()"
+    >
+      <a routerLink="/accounts" routerLinkActive="text-primary font-semibold" class="text-on-surface hover:text-primary">{{ 'accounts.title' | transloco }}</a>
+      <a routerLink="/transactions" routerLinkActive="text-primary font-semibold" class="text-on-surface hover:text-primary">{{ 'transactions.title' | transloco }}</a>
+      <a routerLink="/categories" routerLinkActive="text-primary font-semibold" class="text-on-surface hover:text-primary">{{ 'categories.title' | transloco }}</a>
+      <a routerLink="/transfers" routerLinkActive="text-primary font-semibold" class="text-on-surface hover:text-primary">{{ 'transfers.title' | transloco }}</a>
+      <a routerLink="/templates" routerLinkActive="text-primary font-semibold" class="text-on-surface hover:text-primary">{{ 'templates.title' | transloco }}</a>
+      <a routerLink="/recurring" routerLinkActive="text-primary font-semibold" class="text-on-surface hover:text-primary">{{ 'recurring.title' | transloco }}</a>
+      <a routerLink="/workspace" routerLinkActive="text-primary font-semibold" class="text-on-surface hover:text-primary">{{ 'workspace.title' | transloco }}</a>
+    </ul>
+  </nav>
+</header>
+
+<main class="mx-auto w-full max-w-5xl">
+  <router-outlet />
+</main>

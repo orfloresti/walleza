@@ -2,6 +2,11 @@
   "app": {
     "title": "Walleza"
   },
+  "common": {
+    "menu": {
+      "toggle": "Menú"
+    }
+  },
   "home": {
     "greeting": "Bienvenido a Walleza"
   },
@@ -16,6 +21,7 @@
   },
   "join": {
     "pending": "Uniéndote al espacio de trabajo…",
+    "successTitle": "Ya estás dentro",
     "success": "Te has unido al espacio de trabajo.",
     "invalid": "Este enlace de invitación no es válido o ha expirado.",
     "conflict": "Sal de tu espacio de trabajo actual antes de aceptar una nueva invitación.",

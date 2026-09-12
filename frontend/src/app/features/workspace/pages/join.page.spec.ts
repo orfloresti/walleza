@@ -42,6 +42,7 @@ async function createFixture(token: string | null): Promise<ComponentFixture<Joi
           en: {
             join: {
               pending: 'Joining the workspace…',
+              successTitle: "You're in",
               success: 'You have joined the workspace.',
               invalid: 'This invite link is invalid or has expired.',
               conflict: 'Leave your current workspace before accepting a new invite.',
