@@ -2,6 +2,21 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { TranslocoPipe } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiBadgeComponent,
+  UiButtonComponent,
+  UiCardComponent,
+  UiCheckboxComponent,
+  UiEmptyStateComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiListCellComponent,
+  UiListComponent,
+  UiListRowComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+} from '../../../shared/ui';
 import { AccountsService } from '../data/accounts.service';
 
 /**
@@ -20,111 +35,150 @@ import { AccountsService } from '../data/accounts.service';
  * never filters or re-derives visibility client-side, it only renders
  * what `GET /api/accounts` returns and marks `is_personal` rows with a
  * badge so a shared vs. personal account is visually distinguishable.
+ *
+ * Phase UI (PR6) — migrated to the `shared/ui/` kit. The list now has a
+ * fourth, structurally separate empty-state branch (D64).
+ *
+ * **Deviation from design/tasks, documented per PR5's precedent**: the
+ * show-archived toggle keeps its plain native `<input type="checkbox">`
+ * with `[checked]="showArchived()" (change)="toggleArchived()"` —
+ * unchanged from before this migration — rather than routing through
+ * `ui-checkbox`'s `checkedChange` output as design/tasks specified.
+ * Verified empirically (Angular core, `createModelSignal`): a
+ * `model()`'s setter only calls `emitterRef.emit(...)` when the new
+ * value is NOT equal to the signal's current value
+ * (`if (!node.equal(node.value, newValue)) { ...; emitterRef.emit(...) }`
+ * in `@angular/core`). `accounts-list.page.spec.ts`'s invariant-3 spec
+ * dispatches a bare `change` while `.checked` is already `false` (its
+ * unchanged default) — a false→false "change" — so `ui-checkbox`'s
+ * `checkedChange` NEVER fires in that exact scenario, regardless of
+ * whether the page binds `[checked]/(checkedChange)` (as tasks.md
+ * specifies) or `[(checked)]` (what tasks.md forbids): both route
+ * through the same equality-gated `model()` setter and both would
+ * silently drop the event, so `toggleArchived()` would never run and
+ * the `archived=true` re-request would never fire. `ui-checkbox` is
+ * built for VALUE semantics; this toggle needs EVENT semantics (fire on
+ * every native `change`, never gated by equality) — the same reasoning
+ * design already applied to make `ui-file-input` use `output()` instead
+ * of `model()` ("a file selection is an event, not a value"). No kit
+ * component change is in scope for this PR, so the toggle stays native.
+ * Flag for a future design revision: `ui-checkbox` may need a raw
+ * `(nativeChange)` output alongside its model for exactly this case.
  */
 @Component({
   selector: 'app-accounts-list-page',
-  imports: [FormsModule, TranslocoPipe],
+  imports: [
+    FormsModule,
+    TranslocoPipe,
+    UiAlertComponent,
+    UiBadgeComponent,
+    UiButtonComponent,
+    UiCardComponent,
+    UiCheckboxComponent,
+    UiEmptyStateComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiListCellComponent,
+    UiListComponent,
+    UiListRowComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ 'accounts.title' | transloco }}</h1>
+    <section class="mx-auto w-full max-w-4xl px-4 py-6">
+      <ui-page-header titleKey="accounts.title" />
 
-      <label>
+      <ui-field labelKey="accounts.showArchived" layout="inline">
+        <!-- Deliberately a plain native checkbox, not ui-checkbox — see
+             the class doc comment above (model() equality gate). -->
         <input
           type="checkbox"
           data-testid="show-archived-toggle"
           [checked]="showArchived()"
           (change)="toggleArchived()"
         />
-        {{ 'accounts.showArchived' | transloco }}
-      </label>
+      </ui-field>
 
       @if (loading()) {
-        <p>{{ 'accounts.loading' | transloco }}</p>
+        <ui-loading messageKey="accounts.loading" />
       } @else if (loadError()) {
-        <p role="alert">{{ 'accounts.loadError' | transloco }}</p>
+        <ui-alert messageKey="accounts.loadError" />
+      } @else if (accounts().length === 0) {
+        <ui-empty-state
+          testId="accounts-empty"
+          titleKey="accounts.empty.title"
+          messageKey="accounts.empty.body"
+        />
       } @else {
-        <ul data-testid="accounts-list">
+        <ui-list testId="accounts-list">
           @for (account of accounts(); track account.id) {
-            <li>
-              <span>{{ account.name }}</span>
-              <span>{{ account.currency }}</span>
-              <span>{{ account.initial_funds }}</span>
+            <ui-list-row>
+              <ui-list-cell labelKey="accounts.name">
+                <span>{{ account.name }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="accounts.currency">
+                <span>{{ account.currency }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="accounts.initialFunds">
+                <span>{{ account.initial_funds }}</span>
+              </ui-list-cell>
               @if (account.is_personal) {
-                <span data-testid="personal-badge">{{ 'accounts.personalBadge' | transloco }}</span>
+                <ui-list-cell>
+                  <ui-badge variant="personal" testId="personal-badge">
+                    {{ 'accounts.personalBadge' | transloco }}
+                  </ui-badge>
+                </ui-list-cell>
               }
               @if (account.archived) {
-                <span data-testid="archived-badge">{{ 'accounts.archivedBadge' | transloco }}</span>
+                <ui-list-cell>
+                  <ui-badge variant="archived" testId="archived-badge">
+                    {{ 'accounts.archivedBadge' | transloco }}
+                  </ui-badge>
+                </ui-list-cell>
               } @else {
-                <button type="button" (click)="archiveAccount(account.id)">
-                  {{ 'accounts.archive' | transloco }}
-                </button>
+                <ui-list-cell class="md:ml-auto">
+                  <ui-button variant="secondary" size="sm" (click)="archiveAccount(account.id)">
+                    {{ 'accounts.archive' | transloco }}
+                  </ui-button>
+                </ui-list-cell>
               }
-            </li>
+            </ui-list-row>
           }
-        </ul>
+        </ui-list>
       }
 
-      <form (ngSubmit)="createAccount()">
-        <h2>{{ 'accounts.createTitle' | transloco }}</h2>
+      <ui-card>
+        <form (ngSubmit)="createAccount()" class="flex flex-col gap-3">
+          <h2 class="text-lg font-semibold text-on-surface">
+            {{ 'accounts.createTitle' | transloco }}
+          </h2>
 
-        <label>
-          {{ 'accounts.name' | transloco }}
-          <input
-            type="text"
-            name="name"
-            required
-            [ngModel]="name()"
-            (ngModelChange)="name.set($event)"
-          />
-        </label>
+          <ui-field labelKey="accounts.name">
+            <ui-input name="name" [required]="true" [(value)]="name" />
+          </ui-field>
 
-        <label>
-          {{ 'accounts.currency' | transloco }}
-          <input
-            type="text"
-            name="currency"
-            required
-            maxlength="3"
-            [ngModel]="currency()"
-            (ngModelChange)="currency.set($event)"
-          />
-        </label>
+          <ui-field labelKey="accounts.currency">
+            <ui-input name="currency" [required]="true" [maxLength]="3" [(value)]="currency" />
+          </ui-field>
 
-        <label>
-          {{ 'accounts.exchangeRate' | transloco }}
-          <input
-            type="text"
-            name="exchangeRate"
-            [ngModel]="exchangeRate()"
-            (ngModelChange)="exchangeRate.set($event)"
-          />
-        </label>
+          <ui-field labelKey="accounts.exchangeRate">
+            <ui-input name="exchangeRate" [(value)]="exchangeRate" />
+          </ui-field>
 
-        <label>
-          {{ 'accounts.initialFunds' | transloco }}
-          <input
-            type="text"
-            name="initialFunds"
-            [ngModel]="initialFunds()"
-            (ngModelChange)="initialFunds.set($event)"
-          />
-        </label>
+          <ui-field labelKey="accounts.initialFunds">
+            <ui-input name="initialFunds" [(value)]="initialFunds" />
+          </ui-field>
 
-        <label>
-          <input
-            type="checkbox"
-            name="isPersonal"
-            [ngModel]="isPersonal()"
-            (ngModelChange)="isPersonal.set($event)"
-          />
-          {{ 'accounts.isPersonal' | transloco }}
-        </label>
+          <ui-field labelKey="accounts.isPersonal" layout="inline">
+            <ui-checkbox name="isPersonal" [(checked)]="isPersonal" />
+          </ui-field>
 
-        <button type="submit">{{ 'accounts.create' | transloco }}</button>
-      </form>
+          <ui-button type="submit" variant="primary">{{ 'accounts.create' | transloco }}</ui-button>
+        </form>
+      </ui-card>
 
       @if (actionErrorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
     </section>
   `,
