@@ -1,0 +1,6 @@
+<div class="flex justify-between gap-2 md:block">
+  @if (labelKey(); as key) {
+    <span class="text-sm text-on-surface-muted md:hidden">{{ key | transloco }}</span>
+  }
+  <ng-content />
+</div>

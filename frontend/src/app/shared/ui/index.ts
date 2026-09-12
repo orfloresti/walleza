@@ -18,3 +18,6 @@ export * from './alert/ui-alert.component';
 export * from './empty-state/ui-empty-state.component';
 export * from './loading/ui-loading.component';
 export * from './page-header/ui-page-header.component';
+export * from './list/ui-list.component';
+export * from './list/ui-list-row.component';
+export * from './list/ui-list-cell.component';
