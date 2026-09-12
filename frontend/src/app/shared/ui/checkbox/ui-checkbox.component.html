@@ -1,0 +1,8 @@
+<input
+  type="checkbox"
+  [attr.data-testid]="testId()"
+  [attr.name]="name()"
+  [disabled]="disabled()"
+  [checked]="checked()"
+  (change)="onChange($event)"
+/>
