@@ -14,3 +14,4 @@ export * from './checkbox/ui-checkbox.component';
 export * from './file-input/ui-file-input.component';
 export * from './card/ui-card.component';
 export * from './badge/ui-badge.component';
+export * from './alert/ui-alert.component';
