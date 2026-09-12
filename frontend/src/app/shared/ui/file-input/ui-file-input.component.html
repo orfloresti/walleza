@@ -1,0 +1,7 @@
+<input
+  type="file"
+  [attr.data-testid]="testId()"
+  [attr.accept]="accept()"
+  [disabled]="disabled()"
+  (change)="onChange($event)"
+/>
