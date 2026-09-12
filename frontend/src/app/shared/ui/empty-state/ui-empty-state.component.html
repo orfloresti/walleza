@@ -1,0 +1,5 @@
+<div [attr.data-testid]="testId()" class="flex flex-col items-center gap-2 rounded-xl border border-border bg-surface-variant p-8 text-center">
+  <p class="text-base font-medium text-on-surface">{{ titleKey() | transloco }}</p>
+  <p class="text-sm text-on-surface-muted">{{ messageKey() | transloco }}</p>
+  <ng-content />
+</div>
