@@ -2,6 +2,11 @@
   "app": {
     "title": "Walleza"
   },
+  "common": {
+    "menu": {
+      "toggle": "Menú"
+    }
+  },
   "home": {
     "greeting": "Bienvenido a Walleza"
   },
