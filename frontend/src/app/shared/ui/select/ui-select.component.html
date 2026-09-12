@@ -1,0 +1,22 @@
+<select
+  [attr.data-testid]="testId()"
+  [attr.name]="name()"
+  [attr.required]="required() ? '' : null"
+  [disabled]="disabled()"
+  class="w-full rounded-lg border px-3 py-2 transition-colors"
+  [class]="classes()"
+  (change)="onChange($event)"
+>
+  @if (placeholderKey(); as key) {
+    <option value="" [selected]="value() === ''">{{ key | transloco }}</option>
+  }
+  @for (option of options(); track option.value) {
+    <!-- [selected] per option, NOT [value] on the <select>: the parent
+         element's property binding runs before @for creates the options,
+         so `select.value = x` would target options that do not exist yet
+         on the first pass. -->
+    <option [value]="option.value" [selected]="option.value === value()">
+      {{ option.label }}
+    </option>
+  }
+</select>

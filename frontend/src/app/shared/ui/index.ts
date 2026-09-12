@@ -9,3 +9,4 @@
 export * from './button/ui-button.component';
 export * from './field/ui-field.component';
 export * from './input/ui-input.component';
+export * from './select/ui-select.component';
