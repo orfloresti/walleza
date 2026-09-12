@@ -1,0 +1,12 @@
+<input
+  [attr.type]="type()"
+  [attr.name]="name()"
+  [attr.required]="required() ? '' : null"
+  [attr.maxlength]="maxLength()"
+  [disabled]="disabled()"
+  [attr.data-testid]="testId()"
+  [value]="value()"
+  class="w-full rounded-lg border px-3 py-2 transition-colors"
+  [class]="classes()"
+  (input)="onInput($event)"
+/>

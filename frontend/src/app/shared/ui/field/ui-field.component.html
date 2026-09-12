@@ -1,0 +1,20 @@
+<!-- The associated control is the projected `<ng-content>`, invisible to
+     this rule's static template analysis; the wrapping `<label>` provides
+     a genuine native association at runtime (see ui-field.component.spec.ts). -->
+<!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+<label
+  #label
+  class="flex gap-1.5"
+  [class.flex-col]="layout() === 'stacked'"
+  [class.flex-row-reverse]="layout() === 'inline'"
+  [class.items-center]="layout() === 'inline'"
+>
+  <span class="text-sm font-medium text-on-surface">{{ labelKey() | transloco }}</span>
+  <ng-content />
+</label>
+@if (hintKey(); as key) {
+  <p [id]="hintId" class="text-sm text-on-surface-muted">{{ key | transloco }}</p>
+}
+@if (errorKey(); as key) {
+  <p [id]="errorId" role="alert" class="text-sm text-danger">{{ key | transloco }}</p>
+}
