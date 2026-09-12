@@ -20,42 +20,90 @@
   --color-border: var(--border);
   --color-danger: var(--danger);
   --color-on-danger: var(--on-danger);
+  --color-success: var(--success);
+  --color-on-success: var(--on-success);
+  --color-warning: var(--warning);
+  --color-on-warning: var(--on-warning);
 }
 
 /*
  * Reserved for a future manual light/dark toggle (design D5). Nothing
- * sets `[data-theme]` yet in Phase 0 — theming follows only the OS
+ * sets `[data-theme]` yet in Phase UI — theming follows only the OS
  * `prefers-color-scheme` signal (spec `theming`), with no toggle UI.
  * `@custom-variant dark` makes Tailwind's `dark:` utilities honour
  * either signal once a manual toggle exists.
  */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/*
+ * Design D62 — "jade ledger" palette values are declared exactly once as
+ * `--wz-{light,dark}-*` sources here in `:root`, then mapped by `var()`
+ * into all four cascade blocks below (this block, the dark media query,
+ * and the two inert `[data-theme]` mirrors). No block other than this
+ * `:root` source region may contain a literal `oklch()` value — four
+ * near-identical literal blocks invite silent per-block drift, which
+ * `styles.spec.ts` guards structurally, not by review convention.
+ */
 :root {
-  --surface: oklch(98% 0 0);
-  --surface-variant: oklch(94% 0 0);
-  --on-surface: oklch(20% 0 0);
-  --on-surface-muted: oklch(45% 0 0);
-  --primary: oklch(51% 0.18 260);
-  --on-primary: oklch(100% 0 0);
-  --border: oklch(88% 0 0);
-  --danger: oklch(58% 0.22 25);
-  --on-danger: oklch(100% 0 0);
+  --wz-light-surface: oklch(99% 0.004 95);
+  --wz-dark-surface: oklch(17% 0.008 95);
+  --wz-light-surface-variant: oklch(96% 0.006 95);
+  --wz-dark-surface-variant: oklch(23% 0.009 95);
+  --wz-light-on-surface: oklch(22% 0.01 95);
+  --wz-dark-on-surface: oklch(96% 0.004 95);
+  --wz-light-on-surface-muted: oklch(50% 0.012 95);
+  --wz-dark-on-surface-muted: oklch(72% 0.008 95);
+  --wz-light-primary: oklch(52% 0.12 165);
+  --wz-dark-primary: oklch(76% 0.12 165);
+  --wz-light-on-primary: oklch(99% 0 0);
+  --wz-dark-on-primary: oklch(16% 0.02 165);
+  --wz-light-border: oklch(89% 0.006 95);
+  --wz-dark-border: oklch(31% 0.008 95);
+  --wz-light-danger: oklch(55% 0.2 27);
+  --wz-dark-danger: oklch(70% 0.17 27);
+  --wz-light-on-danger: oklch(99% 0 0);
+  --wz-dark-on-danger: oklch(16% 0.02 27);
+  --wz-light-success: oklch(50% 0.13 150);
+  --wz-dark-success: oklch(74% 0.13 150);
+  --wz-light-on-success: oklch(99% 0 0);
+  --wz-dark-on-success: oklch(16% 0.02 150);
+  --wz-light-warning: oklch(75% 0.15 80);
+  --wz-dark-warning: oklch(80% 0.13 80);
+  --wz-light-on-warning: oklch(25% 0.04 80);
+  --wz-dark-on-warning: oklch(20% 0.03 80);
+
+  --surface: var(--wz-light-surface);
+  --surface-variant: var(--wz-light-surface-variant);
+  --on-surface: var(--wz-light-on-surface);
+  --on-surface-muted: var(--wz-light-on-surface-muted);
+  --primary: var(--wz-light-primary);
+  --on-primary: var(--wz-light-on-primary);
+  --border: var(--wz-light-border);
+  --danger: var(--wz-light-danger);
+  --on-danger: var(--wz-light-on-danger);
+  --success: var(--wz-light-success);
+  --on-success: var(--wz-light-on-success);
+  --warning: var(--wz-light-warning);
+  --on-warning: var(--wz-light-on-warning);
 
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: oklch(18% 0 0);
-    --surface-variant: oklch(24% 0 0);
-    --on-surface: oklch(96% 0 0);
-    --on-surface-muted: oklch(70% 0 0);
-    --primary: oklch(75% 0.15 260);
-    --on-primary: oklch(15% 0 0);
-    --border: oklch(32% 0 0);
-    --danger: oklch(70% 0.2 25);
-    --on-danger: oklch(15% 0 0);
+    --surface: var(--wz-dark-surface);
+    --surface-variant: var(--wz-dark-surface-variant);
+    --on-surface: var(--wz-dark-on-surface);
+    --on-surface-muted: var(--wz-dark-on-surface-muted);
+    --primary: var(--wz-dark-primary);
+    --on-primary: var(--wz-dark-on-primary);
+    --border: var(--wz-dark-border);
+    --danger: var(--wz-dark-danger);
+    --on-danger: var(--wz-dark-on-danger);
+    --success: var(--wz-dark-success);
+    --on-success: var(--wz-dark-on-success);
+    --warning: var(--wz-dark-warning);
+    --on-warning: var(--wz-dark-on-warning);
 
     color-scheme: dark;
   }
@@ -63,29 +111,37 @@
 
 /* Manual-toggle override hooks (inert until a future toggle sets them). */
 [data-theme="dark"] {
-  --surface: oklch(18% 0 0);
-  --surface-variant: oklch(24% 0 0);
-  --on-surface: oklch(96% 0 0);
-  --on-surface-muted: oklch(70% 0 0);
-  --primary: oklch(75% 0.15 260);
-  --on-primary: oklch(15% 0 0);
-  --border: oklch(32% 0 0);
-  --danger: oklch(70% 0.2 25);
-  --on-danger: oklch(15% 0 0);
+  --surface: var(--wz-dark-surface);
+  --surface-variant: var(--wz-dark-surface-variant);
+  --on-surface: var(--wz-dark-on-surface);
+  --on-surface-muted: var(--wz-dark-on-surface-muted);
+  --primary: var(--wz-dark-primary);
+  --on-primary: var(--wz-dark-on-primary);
+  --border: var(--wz-dark-border);
+  --danger: var(--wz-dark-danger);
+  --on-danger: var(--wz-dark-on-danger);
+  --success: var(--wz-dark-success);
+  --on-success: var(--wz-dark-on-success);
+  --warning: var(--wz-dark-warning);
+  --on-warning: var(--wz-dark-on-warning);
 
   color-scheme: dark;
 }
 
 [data-theme="light"] {
-  --surface: oklch(98% 0 0);
-  --surface-variant: oklch(94% 0 0);
-  --on-surface: oklch(20% 0 0);
-  --on-surface-muted: oklch(45% 0 0);
-  --primary: oklch(51% 0.18 260);
-  --on-primary: oklch(100% 0 0);
-  --border: oklch(88% 0 0);
-  --danger: oklch(58% 0.22 25);
-  --on-danger: oklch(100% 0 0);
+  --surface: var(--wz-light-surface);
+  --surface-variant: var(--wz-light-surface-variant);
+  --on-surface: var(--wz-light-on-surface);
+  --on-surface-muted: var(--wz-light-on-surface-muted);
+  --primary: var(--wz-light-primary);
+  --on-primary: var(--wz-light-on-primary);
+  --border: var(--wz-light-border);
+  --danger: var(--wz-light-danger);
+  --on-danger: var(--wz-light-on-danger);
+  --success: var(--wz-light-success);
+  --on-success: var(--wz-light-on-success);
+  --warning: var(--wz-light-warning);
+  --on-warning: var(--wz-light-on-warning);
 
   color-scheme: light;
 }
