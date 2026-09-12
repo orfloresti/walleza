@@ -1,0 +1,9 @@
+@if (messageKey(); as key) {
+  <p [attr.role]="role()" [attr.data-testid]="testId()" [class]="classes()">{{ key | transloco }}</p>
+} @else if (message(); as text) {
+  <!-- VERBATIM branch (D59). A server 422 `detail` renders here,
+       untranslated. This branch contains no pipe. Do not add one. Do not
+       merge it with the branch above. See transfer/template/recurring
+       form pages. -->
+  <p [attr.role]="role()" [attr.data-testid]="testId()" [class]="classes()">{{ text }}</p>
+}
