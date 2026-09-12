@@ -1,0 +1,20 @@
+@if (link(); as href) {
+  <a
+    [routerLink]="href"
+    [attr.data-testid]="testId()"
+    class="inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors"
+    [class]="classes()"
+  >
+    <ng-content />
+  </a>
+} @else {
+  <button
+    [attr.type]="type()"
+    [disabled]="disabled()"
+    [attr.data-testid]="testId()"
+    class="inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none"
+    [class]="classes()"
+  >
+    <ng-content />
+  </button>
+}
