@@ -3,6 +3,21 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TranslocoPipe } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiCardComponent,
+  UiEmptyStateComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiListCellComponent,
+  UiListComponent,
+  UiListRowComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+  UiSelectComponent,
+  UiSelectOption,
+} from '../../../shared/ui';
 import { Category, CategoriesService, CategoryType } from '../data/categories.service';
 
 /** One top-level category paired with its (at most one level deep, per
@@ -26,102 +41,132 @@ interface CategoryGroup {
  * server-side by `visible_categories(scope)` — this page never filters
  * or re-derives visibility client-side, it only renders what
  * `GET /api/categories` returns.
+ *
+ * Phase UI (PR6) — migrated to the `shared/ui/` kit. The parent-category
+ * dropdown becomes `ui-select`, which owns its own `<option>` elements
+ * (design D57) — `parentOptions` is the `computed()` mapping from
+ * top-level categories to `UiSelectOption[]` this requires; the
+ * `category-children` testid is preserved on the nested `ui-list`
+ * (forwarded onto its native `<ul>`, D58). The `category-type` select
+ * stays a plain native `<select>`: its two options ("Expense"/"Income")
+ * are translated labels, and `ui-select` renders `option.label` as plain
+ * text (no `transloco` pipe) — out of scope for this migration, and no
+ * spec queries it by testid, so this is a deliberate, documented
+ * judgment call rather than a silent gap.
  */
 @Component({
   selector: 'app-categories-list-page',
-  imports: [FormsModule, TranslocoPipe],
+  imports: [
+    FormsModule,
+    TranslocoPipe,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiCardComponent,
+    UiEmptyStateComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiListCellComponent,
+    UiListComponent,
+    UiListRowComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+    UiSelectComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ 'categories.title' | transloco }}</h1>
+    <section class="mx-auto w-full max-w-4xl px-4 py-6">
+      <ui-page-header titleKey="categories.title" />
 
       @if (loading()) {
-        <p>{{ 'categories.loading' | transloco }}</p>
+        <ui-loading messageKey="categories.loading" />
       } @else if (loadError()) {
-        <p role="alert">{{ 'categories.loadError' | transloco }}</p>
+        <ui-alert messageKey="categories.loadError" />
+      } @else if (groups().length === 0) {
+        <ui-empty-state
+          testId="categories-empty"
+          titleKey="categories.empty.title"
+          messageKey="categories.empty.body"
+        />
       } @else {
-        <ul data-testid="categories-list">
+        <ui-list testId="categories-list">
           @for (group of groups(); track group.parent.id) {
-            <li>
-              <span>{{ group.parent.icon }} {{ group.parent.name }}</span>
-              <span data-testid="category-type">{{ group.parent.type }}</span>
-              <button type="button" (click)="deleteCategory(group.parent.id)">
-                {{ 'categories.delete' | transloco }}
-              </button>
+            <ui-list-row>
+              <ui-list-cell labelKey="categories.name">
+                <span>{{ group.parent.icon }} {{ group.parent.name }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="categories.type">
+                <span data-testid="category-type">{{ group.parent.type }}</span>
+              </ui-list-cell>
+              <ui-list-cell class="md:ml-auto">
+                <ui-button variant="danger" size="sm" (click)="deleteCategory(group.parent.id)">
+                  {{ 'categories.delete' | transloco }}
+                </ui-button>
+              </ui-list-cell>
               @if (group.children.length > 0) {
-                <ul data-testid="category-children">
+                <ui-list testId="category-children">
                   @for (child of group.children; track child.id) {
-                    <li>
-                      <span>{{ child.icon }} {{ child.name }}</span>
-                      <span data-testid="category-type">{{ child.type }}</span>
-                      <button type="button" (click)="deleteCategory(child.id)">
-                        {{ 'categories.delete' | transloco }}
-                      </button>
-                    </li>
+                    <ui-list-row>
+                      <ui-list-cell labelKey="categories.name">
+                        <span>{{ child.icon }} {{ child.name }}</span>
+                      </ui-list-cell>
+                      <ui-list-cell labelKey="categories.type">
+                        <span data-testid="category-type">{{ child.type }}</span>
+                      </ui-list-cell>
+                      <ui-list-cell class="md:ml-auto">
+                        <ui-button variant="danger" size="sm" (click)="deleteCategory(child.id)">
+                          {{ 'categories.delete' | transloco }}
+                        </ui-button>
+                      </ui-list-cell>
+                    </ui-list-row>
                   }
-                </ul>
+                </ui-list>
               }
-            </li>
+            </ui-list-row>
           }
-        </ul>
+        </ui-list>
       }
 
-      <form (ngSubmit)="createCategory()">
-        <h2>{{ 'categories.createTitle' | transloco }}</h2>
+      <ui-card>
+        <form (ngSubmit)="createCategory()" class="flex flex-col gap-3">
+          <h2 class="text-lg font-semibold text-on-surface">
+            {{ 'categories.createTitle' | transloco }}
+          </h2>
 
-        <label>
-          {{ 'categories.name' | transloco }}
-          <input
-            type="text"
-            name="name"
-            required
-            [ngModel]="name()"
-            (ngModelChange)="name.set($event)"
-          />
-        </label>
+          <ui-field labelKey="categories.name">
+            <ui-input name="name" [required]="true" [(value)]="name" />
+          </ui-field>
 
-        <label>
-          {{ 'categories.icon' | transloco }}
-          <input
-            type="text"
-            name="icon"
-            [ngModel]="icon()"
-            (ngModelChange)="icon.set($event)"
-          />
-        </label>
+          <ui-field labelKey="categories.icon">
+            <ui-input name="icon" [(value)]="icon" />
+          </ui-field>
 
-        <label>
-          {{ 'categories.type' | transloco }}
-          <select
-            name="type"
-            data-testid="category-type-select"
-            [ngModel]="type()"
-            (ngModelChange)="type.set($event)"
-          >
-            <option value="expense">{{ 'categories.expense' | transloco }}</option>
-            <option value="income">{{ 'categories.income' | transloco }}</option>
-          </select>
-        </label>
+          <ui-field labelKey="categories.type">
+            <select
+              name="type"
+              data-testid="category-type-select"
+              [ngModel]="type()"
+              (ngModelChange)="type.set($event)"
+            >
+              <option value="expense">{{ 'categories.expense' | transloco }}</option>
+              <option value="income">{{ 'categories.income' | transloco }}</option>
+            </select>
+          </ui-field>
 
-        <label>
-          {{ 'categories.parent' | transloco }}
-          <select
-            name="parentId"
-            data-testid="category-parent-select"
-            [ngModel]="parentId()"
-            (ngModelChange)="parentId.set($event)"
-          >
-            <option value="">{{ 'categories.noParent' | transloco }}</option>
-            @for (topLevel of topLevelCategories(); track topLevel.id) {
-              <option [value]="topLevel.id">{{ topLevel.name }}</option>
-            }
-          </select>
-        </label>
+          <ui-field labelKey="categories.parent">
+            <ui-select
+              name="parentId"
+              testId="category-parent-select"
+              [options]="parentOptions()"
+              placeholderKey="categories.noParent"
+              [(value)]="parentId"
+            />
+          </ui-field>
 
-        <button type="submit">{{ 'categories.create' | transloco }}</button>
-      </form>
+          <ui-button type="submit" variant="primary">{{ 'categories.create' | transloco }}</ui-button>
+        </form>
+      </ui-card>
 
       @if (actionErrorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
     </section>
   `,
@@ -139,10 +184,14 @@ export class CategoriesListPage {
   protected readonly type = signal<CategoryType>('expense');
   protected readonly parentId = signal('');
 
-  /** Top-level categories only — a child cannot itself be selected as a
-   * parent (design D29: exactly two hierarchy levels). */
-  protected readonly topLevelCategories = computed(() =>
-    this.categories().filter((category) => category.parent_id === null),
+  /** Top-level categories, mapped to `UiSelectOption[]` for `ui-select`
+   * (design D57 — the component owns its own `<option>` elements rather
+   * than projecting page-authored ones). A child cannot itself be
+   * selected as a parent (design D29: exactly two hierarchy levels). */
+  protected readonly parentOptions = computed<UiSelectOption[]>(() =>
+    this.categories()
+      .filter((category) => category.parent_id === null)
+      .map((category) => ({ value: category.id, label: category.name })),
   );
 
   /** Groups the flat list into parent/children pairs for rendering

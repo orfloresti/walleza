@@ -43,7 +43,11 @@
     "initialFunds": "Fondos iniciales",
     "isPersonal": "Cuenta personal",
     "create": "Crear cuenta",
-    "createError": "No se pudo crear esa cuenta. Inténtalo de nuevo."
+    "createError": "No se pudo crear esa cuenta. Inténtalo de nuevo.",
+    "empty": {
+      "title": "Aún no hay cuentas",
+      "body": "Crea tu primera cuenta para empezar."
+    }
   },
   "summary": {
     "title": "Resumen",
