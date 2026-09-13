@@ -63,6 +63,10 @@ describe('CategoriesListPage', () => {
                 noParent: 'None (top-level)',
                 create: 'Create',
                 createError: 'Could not create that category.',
+                empty: {
+                  title: 'No categories yet',
+                  body: 'Create your first category to get started.',
+                },
               },
             },
           },
@@ -107,6 +111,17 @@ describe('CategoriesListPage', () => {
 
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="category-children"]')).toBeFalsy();
+  });
+
+  it('renders the empty state, and no categories list, when there are no categories (task 7.6)', async () => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/categories').flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="categories-empty"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="categories-list"]')).toBeFalsy();
   });
 
   it('submitting the create form calls POST /api/categories with the exact body shape (task focus)', async () => {
