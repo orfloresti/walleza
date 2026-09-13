@@ -170,7 +170,11 @@
     "notes": "Notas",
     "position": "Posición",
     "apply": "Aplicar",
-    "applyError": "No se pudo aplicar esa plantilla. Inténtalo de nuevo."
+    "applyError": "No se pudo aplicar esa plantilla. Inténtalo de nuevo.",
+    "empty": {
+      "title": "Aún no hay plantillas",
+      "body": "Las plantillas que crees aparecerán aquí."
+    }
   },
   "recurring": {
     "title": "Transacciones recurrentes",
@@ -204,6 +208,10 @@
     "endsOn": "Fecha de fin (opcional)",
     "reminderDaysBefore": "Recordarme con esta cantidad de días de anticipación (opcional)",
     "reminderLocale": "Idioma del recordatorio",
-    "backfillWarning": "Esta fecha de inicio está en el pasado. Cada ocurrencia no generada entre esa fecha y hoy se generará y se registrará como una transacción real al guardar esta recurrencia."
+    "backfillWarning": "Esta fecha de inicio está en el pasado. Cada ocurrencia no generada entre esa fecha y hoy se generará y se registrará como una transacción real al guardar esta recurrencia.",
+    "empty": {
+      "title": "Aún no hay transacciones recurrentes",
+      "body": "Las transacciones recurrentes que crees aparecerán aquí."
+    }
   }
 }

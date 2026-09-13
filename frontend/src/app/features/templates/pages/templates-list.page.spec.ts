@@ -74,6 +74,10 @@ const TRANSLATIONS = {
     deleteError: 'Could not delete that template.',
     apply: 'Apply',
     applyError: 'Could not apply that template.',
+    empty: {
+      title: 'No templates yet',
+      body: 'Templates you create will show up here.',
+    },
   },
 };
 
@@ -182,5 +186,18 @@ describe('TemplatesListPage', () => {
 
     httpMock.expectOne((r) => r.url === '/api/templates').flush([]);
     await fixture.whenStable();
+  });
+
+  it('renders the empty state when the list has no templates (task 11.1)', async () => {
+    fixture.detectChanges();
+    flushBootstrapRequests();
+
+    httpMock.expectOne((r) => r.url === '/api/templates').flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="templates-empty"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="templates-list"]')).toBeFalsy();
   });
 });

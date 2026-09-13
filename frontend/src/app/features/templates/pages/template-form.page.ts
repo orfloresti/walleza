@@ -1,9 +1,19 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
-import { TranslocoPipe } from '@jsverse/transloco';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+  UiSelectComponent,
+  type UiSelectOption,
+} from '../../../shared/ui';
 import { AccountsService } from '../../accounts/data/accounts.service';
 import { CategoriesService } from '../../categories/data/categories.service';
 import {
@@ -17,11 +27,12 @@ import {
 import { TemplateCreate, TemplateType, TemplateUpdate, TemplatesService } from '../data/templates.service';
 
 /**
- * Create/edit template form (Phase 4 PR5, task 5.1): name, account,
- * type, amount, notes, position, and an inline split-allocation editor
- * reused verbatim from `features/transactions/ui/split-allocation-rows`
- * (design D55's template split table mirrors `transaction_category_split`
- * exactly, so the same generic category+amount row editor and the same
+ * Create/edit template form (Phase 4 PR5, task 5.1; migrated to the
+ * shared/ui kit in Phase 11 PR9, task 11.1): name, account, type, amount,
+ * notes, position, and an inline split-allocation editor reused verbatim
+ * from `features/transactions/ui/split-allocation-rows` (design D55's
+ * template split table mirrors `transaction_category_split` exactly, so
+ * the same generic category+amount row editor and the same
  * server-authoritative mismatch parsing apply unchanged).
  *
  * A `:id` route param switches the form into edit mode
@@ -33,92 +44,87 @@ import { TemplateCreate, TemplateType, TemplateUpdate, TemplatesService } from '
  * shape `app.templates.service.replace_template_splits` produces,
  * mirroring `app.transactions.service.replace_splits`) and routed to the
  * split editor's own `mismatchError` input; any other 422 renders its
- * `detail` verbatim (task 5.5's "verbatim 422 error rendering"
- * requirement).
+ * `detail` verbatim through `ui-alert`'s `[message]` branch (D59) —
+ * never `| transloco`.
  */
 @Component({
   selector: 'app-template-form-page',
-  imports: [FormsModule, TranslocoPipe, SplitAllocationRowsComponent],
+  imports: [
+    FormsModule,
+    TranslocoPipe,
+    SplitAllocationRowsComponent,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+    UiSelectComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ (isEditMode() ? 'templates.editTitle' : 'templates.createTitle') | transloco }}</h1>
+    <section class="mx-auto w-full max-w-2xl px-4 py-6">
+      <ui-page-header
+        [titleKey]="isEditMode() ? 'templates.editTitle' : 'templates.createTitle'"
+      />
 
       @if (loading()) {
-        <p>{{ 'templates.loading' | transloco }}</p>
+        <ui-loading messageKey="templates.loading" />
       } @else {
-        <form (ngSubmit)="save()">
-          <label>
-            {{ 'templates.name' | transloco }}
-            <input
-              type="text"
+        <form (ngSubmit)="save()" class="flex flex-col gap-3">
+          <ui-field labelKey="templates.name">
+            <ui-input
               name="name"
-              required
-              data-testid="template-name-input"
-              [ngModel]="name()"
-              (ngModelChange)="name.set($event)"
+              [required]="true"
+              testId="template-name-input"
+              [value]="name()"
+              (valueChange)="name.set($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'templates.account' | transloco }}
-            <select
+          <ui-field labelKey="templates.account">
+            <ui-select
               name="accountId"
-              required
-              data-testid="template-account-select"
-              [ngModel]="accountId()"
-              (ngModelChange)="accountId.set($event)"
-            >
-              <option value="">{{ 'templates.selectAccount' | transloco }}</option>
-              @for (account of accounts(); track account.id) {
-                <option [value]="account.id">{{ account.name }}</option>
-              }
-            </select>
-          </label>
+              [required]="true"
+              testId="template-account-select"
+              [options]="accountOptions()"
+              placeholderKey="templates.selectAccount"
+              [value]="accountId()"
+              (valueChange)="accountId.set($event)"
+            />
+          </ui-field>
 
-          <label>
-            {{ 'templates.type' | transloco }}
-            <select
+          <ui-field labelKey="templates.type">
+            <ui-select
               name="type"
-              data-testid="template-type-select"
-              [ngModel]="type()"
-              (ngModelChange)="type.set($event)"
-            >
-              <option value="expense">{{ 'templates.expense' | transloco }}</option>
-              <option value="income">{{ 'templates.income' | transloco }}</option>
-            </select>
-          </label>
+              testId="template-type-select"
+              [options]="typeOptions()"
+              [value]="type()"
+              (valueChange)="setType($event)"
+            />
+          </ui-field>
 
-          <label>
-            {{ 'templates.amount' | transloco }}
-            <input
-              type="text"
+          <ui-field labelKey="templates.amount">
+            <ui-input
               name="amount"
-              required
-              data-testid="template-amount-input"
-              [ngModel]="amount()"
-              (ngModelChange)="amount.set($event)"
+              [required]="true"
+              testId="template-amount-input"
+              [value]="amount()"
+              (valueChange)="amount.set($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'templates.notes' | transloco }}
-            <input
-              type="text"
-              name="notes"
-              [ngModel]="notes()"
-              (ngModelChange)="notes.set($event)"
-            />
-          </label>
+          <ui-field labelKey="templates.notes">
+            <ui-input name="notes" [value]="notes()" (valueChange)="notes.set($event)" />
+          </ui-field>
 
-          <label>
-            {{ 'templates.position' | transloco }}
-            <input
+          <ui-field labelKey="templates.position">
+            <ui-input
               type="number"
               name="position"
-              [ngModel]="position()"
-              (ngModelChange)="position.set($event)"
+              [value]="position().toString()"
+              (valueChange)="setPosition($event)"
             />
-          </label>
+          </ui-field>
 
           <app-split-allocation-rows
             [categories]="categories()"
@@ -126,17 +132,17 @@ import { TemplateCreate, TemplateType, TemplateUpdate, TemplatesService } from '
             [mismatchError]="splitMismatchError()"
           />
 
-          <button type="submit">
+          <ui-button type="submit" variant="primary">
             {{ (isEditMode() ? 'templates.save' : 'templates.create') | transloco }}
-          </button>
+          </ui-button>
         </form>
       }
 
       @if (errorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
       @if (serverErrorDetail(); as detail) {
-        <p role="alert" data-testid="template-server-error">{{ detail }}</p>
+        <ui-alert [message]="detail" testId="template-server-error" />
       }
     </section>
   `,
@@ -147,9 +153,19 @@ export class TemplateFormPage {
   private readonly categoriesService = inject(CategoriesService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly transloco = inject(TranslocoService);
 
   protected readonly accounts = this.accountsService.accounts;
   protected readonly categories = this.categoriesService.categories;
+
+  protected readonly accountOptions = computed<UiSelectOption[]>(() =>
+    this.accounts().map((a) => ({ value: a.id, label: a.name })),
+  );
+
+  protected readonly typeOptions = computed<UiSelectOption[]>(() => [
+    { value: 'expense', label: this.transloco.translate('templates.expense') },
+    { value: 'income', label: this.transloco.translate('templates.income') },
+  ]);
 
   protected readonly templateId = signal<string | null>(null);
   protected readonly isEditMode = signal(false);
@@ -182,6 +198,14 @@ export class TemplateFormPage {
     } else {
       this.loading.set(false);
     }
+  }
+
+  protected setType(value: string): void {
+    this.type.set(value as TemplateType);
+  }
+
+  protected setPosition(value: string): void {
+    this.position.set(Number(value) || 0);
   }
 
   private loadExisting(id: string): void {

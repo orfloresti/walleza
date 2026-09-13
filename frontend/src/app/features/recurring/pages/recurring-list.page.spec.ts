@@ -68,6 +68,10 @@ const TRANSLATIONS = {
     delete: 'Delete',
     deleteError: 'Could not delete.',
     isSubscription: 'Subscription',
+    empty: {
+      title: 'No recurring transactions yet',
+      body: 'Recurring transactions you create will show up here.',
+    },
   },
 };
 
@@ -153,5 +157,20 @@ describe('RecurringListPage', () => {
 
     httpMock.expectOne((r) => r.url === '/api/recurring').flush([]);
     await fixture.whenStable();
+  });
+
+  it('renders the empty state when the list has no recurring transactions (task 11.2)', async () => {
+    const fixture = await createFixture(false);
+    httpMock = TestBed.inject(HttpTestingController);
+
+    fixture.detectChanges();
+    httpMock.expectOne((r) => r.url === '/api/accounts').flush([ACCOUNT]);
+    httpMock.expectOne((r) => r.url === '/api/recurring').flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="recurring-empty"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="recurring-list"]')).toBeFalsy();
   });
 });

@@ -170,7 +170,11 @@
     "notes": "Notes",
     "position": "Position",
     "apply": "Apply",
-    "applyError": "Could not apply that template. Please try again."
+    "applyError": "Could not apply that template. Please try again.",
+    "empty": {
+      "title": "No templates yet",
+      "body": "Templates you create will show up here."
+    }
   },
   "recurring": {
     "title": "Recurring transactions",
@@ -204,6 +208,10 @@
     "endsOn": "Ends on (optional)",
     "reminderDaysBefore": "Remind me this many days before (optional)",
     "reminderLocale": "Reminder language",
-    "backfillWarning": "This start date is in the past. Every occurrence missed between then and today will be generated and posted as real transactions once this recurrence is saved."
+    "backfillWarning": "This start date is in the past. Every occurrence missed between then and today will be generated and posted as real transactions once this recurrence is saved.",
+    "empty": {
+      "title": "No recurring transactions yet",
+      "body": "Recurring transactions you create will show up here."
+    }
   }
 }
