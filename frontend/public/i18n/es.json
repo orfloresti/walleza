@@ -138,7 +138,11 @@
     "filterDateFrom": "Desde",
     "filterDateTo": "Hasta",
     "filterAll": "Todas",
-    "balanceNotice": "Las transferencias quedan registradas aquí, pero todavía no modifican el saldo de ninguna cuenta — la actualización de saldos llegará en una próxima versión."
+    "balanceNotice": "Las transferencias quedan registradas aquí, pero todavía no modifican el saldo de ninguna cuenta — la actualización de saldos llegará en una próxima versión.",
+    "empty": {
+      "title": "Aún no hay transferencias",
+      "body": "Crea tu primera transferencia para mover dinero entre cuentas."
+    }
   },
   "templates": {
     "title": "Plantillas",
