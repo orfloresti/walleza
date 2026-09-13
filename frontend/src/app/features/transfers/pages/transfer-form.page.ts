@@ -1,9 +1,19 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+  UiSelectComponent,
+  type UiSelectOption,
+} from '../../../shared/ui';
 import { AccountsService } from '../../accounts/data/accounts.service';
 import { TransferCreate, TransfersService } from '../data/transfers.service';
 
@@ -26,93 +36,85 @@ import { TransferCreate, TransfersService } from '../data/transfers.service';
  * server always derives it); this page computes NO client-side
  * conversion preview — a live preview would be a second implementation
  * of currency arithmetic in JS, exactly what D19/D33 forbid.
+ *
+ * Phase UI (PR7) — migrated to the `shared/ui/` kit. `FormsModule`
+ * stays imported (design's Correction to revision 1): `(ngSubmit)` is
+ * `NgForm`'s output and `transfer-form.page.spec.ts` drives submission
+ * with `form.dispatchEvent(new Event('submit'))`. The server 422 detail
+ * moves to `<ui-alert [message]="detail" testId="transfer-server-error" />`,
+ * unchanged in kind (design's "reference migration", the verbatim-422
+ * site) — task 8.5's pinned regression guard.
  */
 @Component({
   selector: 'app-transfer-form-page',
-  imports: [FormsModule, TranslocoPipe],
+  imports: [
+    FormsModule,
+    TranslocoPipe,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+    UiSelectComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ 'transfers.createTitle' | transloco }}</h1>
+    <section class="mx-auto w-full max-w-2xl px-4 py-6">
+      <ui-page-header titleKey="transfers.createTitle" />
 
       @if (loading()) {
-        <p>{{ 'transfers.loading' | transloco }}</p>
+        <ui-loading messageKey="transfers.loading" />
       } @else {
-        <form (ngSubmit)="save()">
-          <label>
-            {{ 'transfers.fromAccount' | transloco }}
-            <select
+        <form (ngSubmit)="save()" class="flex flex-col gap-3">
+          <ui-field labelKey="transfers.fromAccount">
+            <ui-select
               name="fromAccountId"
-              required
-              data-testid="transfer-from-account-select"
-              [ngModel]="fromAccountId()"
-              (ngModelChange)="fromAccountId.set($event)"
-            >
-              <option value="">{{ 'transfers.selectAccount' | transloco }}</option>
-              @for (account of accounts(); track account.id) {
-                <option [value]="account.id">{{ account.name }}</option>
-              }
-            </select>
-          </label>
-
-          <label>
-            {{ 'transfers.toAccount' | transloco }}
-            <select
-              name="toAccountId"
-              required
-              data-testid="transfer-to-account-select"
-              [ngModel]="toAccountId()"
-              (ngModelChange)="toAccountId.set($event)"
-            >
-              <option value="">{{ 'transfers.selectAccount' | transloco }}</option>
-              @for (account of accounts(); track account.id) {
-                <option [value]="account.id">{{ account.name }}</option>
-              }
-            </select>
-          </label>
-
-          <label>
-            {{ 'transfers.amount' | transloco }}
-            <input
-              type="text"
-              name="amount"
-              required
-              data-testid="transfer-amount-input"
-              [ngModel]="amount()"
-              (ngModelChange)="amount.set($event)"
+              [required]="true"
+              testId="transfer-from-account-select"
+              [options]="accountOptions()"
+              placeholderKey="transfers.selectAccount"
+              [(value)]="fromAccountId"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'transfers.date' | transloco }}
-            <input
+          <ui-field labelKey="transfers.toAccount">
+            <ui-select
+              name="toAccountId"
+              [required]="true"
+              testId="transfer-to-account-select"
+              [options]="accountOptions()"
+              placeholderKey="transfers.selectAccount"
+              [(value)]="toAccountId"
+            />
+          </ui-field>
+
+          <ui-field labelKey="transfers.amount">
+            <ui-input name="amount" [required]="true" testId="transfer-amount-input" [(value)]="amount" />
+          </ui-field>
+
+          <ui-field labelKey="transfers.date">
+            <ui-input
               type="date"
               name="occurredOn"
-              required
-              data-testid="transfer-date-input"
-              [ngModel]="occurredOn()"
-              (ngModelChange)="occurredOn.set($event)"
+              [required]="true"
+              testId="transfer-date-input"
+              [(value)]="occurredOn"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'transfers.notes' | transloco }}
-            <input
-              type="text"
-              name="notes"
-              [ngModel]="notes()"
-              (ngModelChange)="notes.set($event)"
-            />
-          </label>
+          <ui-field labelKey="transfers.notes">
+            <ui-input name="notes" [(value)]="notes" />
+          </ui-field>
 
-          <button type="submit">{{ 'transfers.create' | transloco }}</button>
+          <ui-button type="submit" variant="primary">{{ 'transfers.create' | transloco }}</ui-button>
         </form>
       }
 
       @if (errorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
       @if (serverErrorDetail(); as detail) {
-        <p role="alert" data-testid="transfer-server-error">{{ detail }}</p>
+        <ui-alert [message]="detail" testId="transfer-server-error" />
       }
     </section>
   `,
@@ -123,6 +125,10 @@ export class TransferFormPage {
   private readonly router = inject(Router);
 
   protected readonly accounts = this.accountsService.accounts;
+
+  protected readonly accountOptions = computed<UiSelectOption[]>(() =>
+    this.accounts().map((a) => ({ value: a.id, label: a.name })),
+  );
 
   protected readonly loading = signal(true);
   protected readonly errorKey = signal<string | null>(null);

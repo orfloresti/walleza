@@ -1,8 +1,21 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiCardComponent,
+  UiEmptyStateComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiListCellComponent,
+  UiListComponent,
+  UiListRowComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+  UiSelectComponent,
+  type UiSelectOption,
+} from '../../../shared/ui';
 import { AccountsService } from '../../accounts/data/accounts.service';
 import { TransferFilters, TransfersService } from '../data/transfers.service';
 
@@ -21,83 +34,125 @@ import { TransferFilters, TransfersService } from '../data/transfers.service';
  * `visible_transfers(scope, ...)` — this page never filters or
  * re-derives visibility client-side, it only renders what
  * `GET /api/transfers` returns.
+ *
+ * Phase UI (PR7) — migrated to the `shared/ui/` kit; this page IS the
+ * design's own "reference migration" example (design's Reference
+ * migration section), replicated verbatim here. The filter form's
+ * account select uses `[options]="accountOptions()"` (a `computed()`
+ * mapping `accounts()` to `UiSelectOption[]`) and keeps the exact
+ * `[value]`/`(valueChange)` sequence the D34 reference migration
+ * specifies — this is what task 8.2 pins as unmodified in the spec.
  */
 @Component({
   selector: 'app-transfers-list-page',
-  imports: [FormsModule, RouterLink, TranslocoPipe],
+  imports: [
+    TranslocoPipe,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiCardComponent,
+    UiEmptyStateComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiListCellComponent,
+    UiListComponent,
+    UiListRowComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+    UiSelectComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ 'transfers.title' | transloco }}</h1>
+    <section class="mx-auto w-full max-w-5xl px-4 py-6">
+      <ui-page-header titleKey="transfers.title">
+        <ui-button link="/transfers/new" variant="primary">
+          {{ 'transfers.create' | transloco }}
+        </ui-button>
+      </ui-page-header>
 
-      <p data-testid="transfers-balance-notice">{{ 'transfers.balanceNotice' | transloco }}</p>
+      <ui-alert
+        variant="info"
+        messageKey="transfers.balanceNotice"
+        testId="transfers-balance-notice"
+      />
 
-      <a routerLink="/transfers/new">{{ 'transfers.create' | transloco }}</a>
-
-      <form data-testid="transfers-filters">
-        <label>
-          {{ 'transfers.filterAccount' | transloco }}
-          <select
-            name="filterAccount"
-            data-testid="filter-account"
-            [ngModel]="accountFilter()"
-            (ngModelChange)="setAccountFilter($event)"
-          >
-            <option value="">{{ 'transfers.filterAll' | transloco }}</option>
-            @for (account of accounts(); track account.id) {
-              <option [value]="account.id">{{ account.name }}</option>
-            }
-          </select>
-        </label>
-
-        <label>
-          {{ 'transfers.filterDateFrom' | transloco }}
-          <input
-            type="date"
-            name="filterDateFrom"
-            data-testid="filter-date-from"
-            [ngModel]="dateFromFilter()"
-            (ngModelChange)="setDateFromFilter($event)"
-          />
-        </label>
-
-        <label>
-          {{ 'transfers.filterDateTo' | transloco }}
-          <input
-            type="date"
-            name="filterDateTo"
-            data-testid="filter-date-to"
-            [ngModel]="dateToFilter()"
-            (ngModelChange)="setDateToFilter($event)"
-          />
-        </label>
-      </form>
+      <ui-card>
+        <form data-testid="transfers-filters" class="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <ui-field labelKey="transfers.filterAccount">
+            <ui-select
+              name="filterAccount"
+              testId="filter-account"
+              [options]="accountOptions()"
+              placeholderKey="transfers.filterAll"
+              [value]="accountFilter()"
+              (valueChange)="setAccountFilter($event)"
+            />
+          </ui-field>
+          <ui-field labelKey="transfers.filterDateFrom">
+            <ui-input
+              type="date"
+              name="filterDateFrom"
+              testId="filter-date-from"
+              [value]="dateFromFilter()"
+              (valueChange)="setDateFromFilter($event)"
+            />
+          </ui-field>
+          <ui-field labelKey="transfers.filterDateTo">
+            <ui-input
+              type="date"
+              name="filterDateTo"
+              testId="filter-date-to"
+              [value]="dateToFilter()"
+              (valueChange)="setDateToFilter($event)"
+            />
+          </ui-field>
+        </form>
+      </ui-card>
 
       @if (loading()) {
-        <p>{{ 'transfers.loading' | transloco }}</p>
+        <ui-loading messageKey="transfers.loading" />
       } @else if (loadError()) {
-        <p role="alert">{{ 'transfers.loadError' | transloco }}</p>
+        <ui-alert messageKey="transfers.loadError" />
+      } @else if (transfers().length === 0) {
+        <ui-empty-state
+          testId="transfers-empty"
+          titleKey="transfers.empty.title"
+          messageKey="transfers.empty.body"
+        >
+          <ui-button link="/transfers/new" variant="primary">
+            {{ 'transfers.create' | transloco }}
+          </ui-button>
+        </ui-empty-state>
       } @else {
-        <ul data-testid="transfers-list">
+        <ui-list testId="transfers-list">
           @for (transfer of transfers(); track transfer.id) {
-            <li>
-              <span>{{ transfer.occurred_on }}</span>
-              <span data-testid="transfer-from">{{ accountName(transfer.from_account_id) }}</span>
-              <span data-testid="transfer-from-amount">{{ transfer.from_amount }}</span>
-              <span data-testid="transfer-to">{{ accountName(transfer.to_account_id) }}</span>
-              <span data-testid="transfer-to-amount">{{ transfer.to_amount }}</span>
+            <ui-list-row>
+              <ui-list-cell labelKey="transfers.date">
+                <span>{{ transfer.occurred_on }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="transfers.fromAccount">
+                <span data-testid="transfer-from">{{ accountName(transfer.from_account_id) }}</span>
+                <span data-testid="transfer-from-amount">{{ transfer.from_amount }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="transfers.toAccount">
+                <span data-testid="transfer-to">{{ accountName(transfer.to_account_id) }}</span>
+                <span data-testid="transfer-to-amount">{{ transfer.to_amount }}</span>
+              </ui-list-cell>
               @if (transfer.notes) {
-                <span>{{ transfer.notes }}</span>
+                <ui-list-cell>
+                  <span>{{ transfer.notes }}</span>
+                </ui-list-cell>
               }
-              <button type="button" (click)="deleteTransfer(transfer.id)">
-                {{ 'transfers.delete' | transloco }}
-              </button>
-            </li>
+              <ui-list-cell class="md:ml-auto">
+                <ui-button variant="danger" size="sm" (click)="deleteTransfer(transfer.id)">
+                  {{ 'transfers.delete' | transloco }}
+                </ui-button>
+              </ui-list-cell>
+            </ui-list-row>
           }
-        </ul>
+        </ui-list>
       }
 
       @if (actionErrorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
     </section>
   `,
@@ -116,6 +171,10 @@ export class TransfersListPage {
   protected readonly accountFilter = signal('');
   protected readonly dateFromFilter = signal('');
   protected readonly dateToFilter = signal('');
+
+  protected readonly accountOptions = computed<UiSelectOption[]>(() =>
+    this.accounts().map((a) => ({ value: a.id, label: a.name })),
+  );
 
   private readonly accountNameById = computed(() => {
     const map = new Map<string, string>();

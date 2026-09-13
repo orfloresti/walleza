@@ -138,7 +138,11 @@
     "filterDateFrom": "From",
     "filterDateTo": "To",
     "filterAll": "All",
-    "balanceNotice": "Transfers are recorded here but do not yet change any account balance — balance updates are coming in a future release."
+    "balanceNotice": "Transfers are recorded here but do not yet change any account balance — balance updates are coming in a future release.",
+    "empty": {
+      "title": "No transfers yet",
+      "body": "Create your first transfer to move money between accounts."
+    }
   },
   "templates": {
     "title": "Templates",

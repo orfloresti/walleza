@@ -74,6 +74,10 @@ const TRANSLATIONS = {
     filterDateTo: 'To',
     filterAll: 'All',
     balanceNotice: 'Transfers are recorded here but do not yet change any account balance.',
+    empty: {
+      title: 'No transfers yet',
+      body: 'Create your first transfer to move money between accounts.',
+    },
   },
 };
 
@@ -164,6 +168,20 @@ describe('TransfersListPage', () => {
     expect(req.request.params.get('date_to')).toBe('2026-01-31');
     req.flush([]);
     await fixture.whenStable();
+  });
+
+  it('renders the empty state when there are no transfers, distinct from loading/error', async () => {
+    fixture.detectChanges();
+    flushBootstrapRequests();
+    httpMock.expectOne((r) => r.url === '/api/transfers').flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    const emptyState = el.querySelector('[data-testid="transfers-empty"]');
+    expect(emptyState).toBeTruthy();
+    expect(emptyState?.textContent).toContain('No transfers yet');
+    expect(el.querySelector('[data-testid="transfers-list"]')).toBeNull();
   });
 
   it('clicking delete calls DELETE /api/transfers/{id}', async () => {

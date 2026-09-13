@@ -115,12 +115,16 @@ describe('TransferFormPage', () => {
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
+    // `.trim()` accommodates ui-select's multi-line templateUrl markup
+    // (whitespace-only formatting difference vs. the pre-migration
+    // single-line native `<option>`) — option membership/order is
+    // otherwise identical, not a behavior change.
     const fromOptions = Array.from(
       el.querySelectorAll('[data-testid="transfer-from-account-select"] option'),
-    ).map((o) => o.textContent);
+    ).map((o) => o.textContent?.trim());
     const toOptions = Array.from(
       el.querySelectorAll('[data-testid="transfer-to-account-select"] option'),
-    ).map((o) => o.textContent);
+    ).map((o) => o.textContent?.trim());
 
     expect(fromOptions).toContain('Checking');
     expect(fromOptions).toContain('Savings');
