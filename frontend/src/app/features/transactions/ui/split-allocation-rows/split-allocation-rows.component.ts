@@ -1,8 +1,11 @@
-import { Component, input, model } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { Component, computed, input, model } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 
 import { Category } from '../../../categories/data/categories.service';
+import { UiAlertComponent } from '../../../../shared/ui/alert/ui-alert.component';
+import { UiFieldComponent } from '../../../../shared/ui/field/ui-field.component';
+import { UiInputComponent } from '../../../../shared/ui/input/ui-input.component';
+import { UiSelectComponent, UiSelectOption } from '../../../../shared/ui/select/ui-select.component';
 import { SplitMismatchError } from './split-mismatch-error';
 
 /** One editable split row — category + amount, both raw strings. Sent
@@ -30,38 +33,30 @@ export interface SplitRowValue {
  */
 @Component({
   selector: 'app-split-allocation-rows',
-  imports: [FormsModule, TranslocoPipe],
+  imports: [TranslocoPipe, UiInputComponent, UiSelectComponent, UiAlertComponent, UiFieldComponent],
   template: `
     <fieldset data-testid="split-allocation-rows">
       <legend>{{ 'transactions.splits.title' | transloco }}</legend>
 
       @for (row of rows(); track $index) {
         <div data-testid="split-row">
-          <label>
-            {{ 'transactions.splits.category' | transloco }}
-            <select
-              [attr.data-testid]="'split-category-select-' + $index"
-              [ngModel]="row.category_id"
-              [ngModelOptions]="{ standalone: true }"
-              (ngModelChange)="updateCategory($index, $event)"
-            >
-              <option value="">{{ 'transactions.splits.selectCategory' | transloco }}</option>
-              @for (category of categories(); track category.id) {
-                <option [value]="category.id">{{ category.name }}</option>
-              }
-            </select>
-          </label>
-
-          <label>
-            {{ 'transactions.splits.amount' | transloco }}
-            <input
-              type="text"
-              [attr.data-testid]="'split-amount-input-' + $index"
-              [ngModel]="row.amount"
-              [ngModelOptions]="{ standalone: true }"
-              (ngModelChange)="updateAmount($index, $event)"
+          <ui-field labelKey="transactions.splits.category">
+            <ui-select
+              [testId]="'split-category-select-' + $index"
+              [options]="categoryOptions()"
+              placeholderKey="transactions.splits.selectCategory"
+              [value]="row.category_id"
+              (valueChange)="updateCategory($index, $event)"
             />
-          </label>
+          </ui-field>
+
+          <ui-field labelKey="transactions.splits.amount">
+            <ui-input
+              [testId]="'split-amount-input-' + $index"
+              [value]="row.amount"
+              (valueChange)="updateAmount($index, $event)"
+            />
+          </ui-field>
 
           <button
             type="button"
@@ -78,17 +73,15 @@ export interface SplitRowValue {
       </button>
 
       @if (mismatchError(); as error) {
-        <p role="alert" data-testid="split-mismatch-error">
-          {{ error.rawMessage }}
-          @if (error.expectedTotal !== null && error.allocatedTotal !== null) {
-            <span data-testid="split-allocated-total">
-              {{ 'transactions.splits.allocatedTotal' | transloco }}: {{ error.allocatedTotal }}
-            </span>
-            <span data-testid="split-expected-total">
-              {{ 'transactions.splits.expectedTotal' | transloco }}: {{ error.expectedTotal }}
-            </span>
-          }
-        </p>
+        <ui-alert testId="split-mismatch-error" [message]="error.rawMessage" />
+        @if (error.expectedTotal !== null && error.allocatedTotal !== null) {
+          <span data-testid="split-allocated-total">
+            {{ 'transactions.splits.allocatedTotal' | transloco }}: {{ error.allocatedTotal }}
+          </span>
+          <span data-testid="split-expected-total">
+            {{ 'transactions.splits.expectedTotal' | transloco }}: {{ error.expectedTotal }}
+          </span>
+        }
       }
     </fieldset>
   `,
@@ -97,6 +90,10 @@ export class SplitAllocationRowsComponent {
   readonly categories = input.required<Category[]>();
   readonly rows = model<SplitRowValue[]>([]);
   readonly mismatchError = input<SplitMismatchError | null>(null);
+
+  protected readonly categoryOptions = computed<UiSelectOption[]>(() =>
+    this.categories().map((category) => ({ value: category.id, label: category.name })),
+  );
 
   protected addRow(): void {
     this.rows.update((rows) => [...rows, { category_id: '', amount: '' }]);
