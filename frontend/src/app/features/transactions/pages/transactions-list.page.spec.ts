@@ -82,6 +82,10 @@ const TRANSLATIONS = {
     income: 'Income',
     refundBadge: 'Refund',
     checkedBadge: 'Checked',
+    empty: {
+      title: 'No transactions yet',
+      body: 'Transactions you add will show up here.',
+    },
   },
 };
 
@@ -178,6 +182,19 @@ describe('TransactionsListPage', () => {
     expect(req.request.params.get('type')).toBe('expense');
     req.flush([]);
     await fixture.whenStable();
+  });
+
+  it('renders the empty state when the feed has no transactions (task 9.3)', async () => {
+    fixture.detectChanges();
+    flushBootstrapRequests();
+
+    httpMock.expectOne((r) => r.url === '/api/transactions').flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="transactions-empty"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="transactions-list"]')).toBeFalsy();
   });
 
   it('clicking delete calls DELETE /api/transactions/{id}', async () => {

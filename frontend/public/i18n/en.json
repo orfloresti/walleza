@@ -103,6 +103,10 @@
     "filterDateTo": "To",
     "filterType": "Type",
     "filterAll": "All",
+    "empty": {
+      "title": "No transactions yet",
+      "body": "Transactions you add will show up here."
+    },
     "splits": {
       "title": "Split across categories",
       "category": "Category",

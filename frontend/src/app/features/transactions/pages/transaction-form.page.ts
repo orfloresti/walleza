@@ -1,9 +1,20 @@
-import { Component, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
-import { TranslocoPipe } from '@jsverse/transloco';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiCheckboxComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+  UiSelectComponent,
+  type UiSelectOption,
+} from '../../../shared/ui';
 import { AccountsService } from '../../accounts/data/accounts.service';
 import { CategoriesService } from '../../categories/data/categories.service';
 import {
@@ -67,99 +78,83 @@ import { ReceiptUploadComponent } from '../ui/receipt-upload/receipt-upload.comp
     TranslocoPipe,
     SplitAllocationRowsComponent,
     ReceiptUploadComponent,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiCheckboxComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+    UiSelectComponent,
   ],
   template: `
-    <section>
-      <h1>
-        {{ (isEditMode() ? 'transactions.editTitle' : 'transactions.createTitle') | transloco }}
-      </h1>
+    <section class="mx-auto w-full max-w-2xl px-4 py-6">
+      <ui-page-header
+        [titleKey]="isEditMode() ? 'transactions.editTitle' : 'transactions.createTitle'"
+      />
 
       @if (loading()) {
-        <p>{{ 'transactions.loading' | transloco }}</p>
+        <ui-loading messageKey="transactions.loading" />
       } @else {
-        <form (ngSubmit)="save()">
-          <label>
-            {{ 'transactions.account' | transloco }}
-            <select
+        <form (ngSubmit)="save()" class="flex flex-col gap-3">
+          <ui-field labelKey="transactions.account">
+            <ui-select
               name="accountId"
-              required
-              data-testid="transaction-account-select"
-              [ngModel]="accountId()"
-              (ngModelChange)="accountId.set($event)"
-            >
-              <option value="">{{ 'transactions.selectAccount' | transloco }}</option>
-              @for (account of accounts(); track account.id) {
-                <option [value]="account.id">{{ account.name }}</option>
-              }
-            </select>
-          </label>
-
-          <label>
-            {{ 'transactions.type' | transloco }}
-            <select
-              name="type"
-              data-testid="transaction-type-select"
-              [ngModel]="type()"
-              (ngModelChange)="type.set($event)"
-            >
-              <option value="expense">{{ 'transactions.expense' | transloco }}</option>
-              <option value="income">{{ 'transactions.income' | transloco }}</option>
-            </select>
-          </label>
-
-          <label>
-            {{ 'transactions.amount' | transloco }}
-            <input
-              type="text"
-              name="amount"
-              required
-              data-testid="transaction-amount-input"
-              [ngModel]="amount()"
-              (ngModelChange)="amount.set($event)"
+              [required]="true"
+              testId="transaction-account-select"
+              [options]="accountOptions()"
+              placeholderKey="transactions.selectAccount"
+              [value]="accountId()"
+              (valueChange)="accountId.set($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'transactions.date' | transloco }}
-            <input
+          <ui-field labelKey="transactions.type">
+            <ui-select
+              name="type"
+              testId="transaction-type-select"
+              [options]="typeOptions()"
+              [value]="type()"
+              (valueChange)="setType($event)"
+            />
+          </ui-field>
+
+          <ui-field labelKey="transactions.amount">
+            <ui-input
+              name="amount"
+              [required]="true"
+              testId="transaction-amount-input"
+              [value]="amount()"
+              (valueChange)="amount.set($event)"
+            />
+          </ui-field>
+
+          <ui-field labelKey="transactions.date">
+            <ui-input
               type="date"
               name="occurredOn"
-              required
-              data-testid="transaction-date-input"
-              [ngModel]="occurredOn()"
-              (ngModelChange)="occurredOn.set($event)"
+              [required]="true"
+              testId="transaction-date-input"
+              [value]="occurredOn()"
+              (valueChange)="occurredOn.set($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'transactions.notes' | transloco }}
-            <input
-              type="text"
+          <ui-field labelKey="transactions.notes">
+            <ui-input
               name="notes"
-              [ngModel]="notes()"
-              (ngModelChange)="notes.set($event)"
+              [value]="notes()"
+              (valueChange)="notes.set($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            <input
-              type="checkbox"
-              name="isRefund"
-              [ngModel]="isRefund()"
-              (ngModelChange)="isRefund.set($event)"
-            />
-            {{ 'transactions.isRefund' | transloco }}
-          </label>
+          <ui-field labelKey="transactions.isRefund" layout="inline">
+            <ui-checkbox name="isRefund" [(checked)]="isRefund" />
+          </ui-field>
 
-          <label>
-            <input
-              type="checkbox"
-              name="checked"
-              [ngModel]="checked()"
-              (ngModelChange)="checked.set($event)"
-            />
-            {{ 'transactions.checked' | transloco }}
-          </label>
+          <ui-field labelKey="transactions.checked" layout="inline">
+            <ui-checkbox name="checked" [(checked)]="checked" />
+          </ui-field>
 
           <app-split-allocation-rows
             [categories]="categories()"
@@ -169,14 +164,14 @@ import { ReceiptUploadComponent } from '../ui/receipt-upload/receipt-upload.comp
 
           <app-receipt-upload />
 
-          <button type="submit">
+          <ui-button type="submit" variant="primary">
             {{ (isEditMode() ? 'transactions.save' : 'transactions.create') | transloco }}
-          </button>
+          </ui-button>
         </form>
       }
 
       @if (errorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
     </section>
   `,
@@ -187,9 +182,19 @@ export class TransactionFormPage {
   private readonly categoriesService = inject(CategoriesService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly transloco = inject(TranslocoService);
 
   protected readonly accounts = this.accountsService.accounts;
   protected readonly categories = this.categoriesService.categories;
+
+  protected readonly accountOptions = computed<UiSelectOption[]>(() =>
+    this.accounts().map((a) => ({ value: a.id, label: a.name })),
+  );
+
+  protected readonly typeOptions = computed<UiSelectOption[]>(() => [
+    { value: 'expense', label: this.transloco.translate('transactions.expense') },
+    { value: 'income', label: this.transloco.translate('transactions.income') },
+  ]);
 
   private readonly receiptUpload = viewChild(ReceiptUploadComponent);
 
@@ -226,6 +231,10 @@ export class TransactionFormPage {
     } else {
       this.loading.set(false);
     }
+  }
+
+  protected setType(value: string): void {
+    this.type.set(value as TransactionType);
   }
 
   private loadExisting(id: string): void {
