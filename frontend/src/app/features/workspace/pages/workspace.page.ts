@@ -2,6 +2,16 @@ import { Component, inject, signal } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 
 import { AuthService } from '../../../core/auth/auth.service';
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiCardComponent,
+  UiListCellComponent,
+  UiListComponent,
+  UiListRowComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+} from '../../../shared/ui';
 import { AccountsService, type WorkspaceSummary } from '../../accounts/data/accounts.service';
 import { WorkspaceService } from '../data/workspace.service';
 
@@ -15,62 +25,99 @@ import { WorkspaceService } from '../data/workspace.service';
  * per design's own File Changes table ("frontend/.../workspace.page.ts |
  * Modify | ... `/summary` totals"). Account list/CRUD itself lives in
  * `features/accounts/` (PR4b's own feature module), not this page.
- * Deliberately unpolished — functionally correct, not styled.
+ *
+ * Phase UI (PR7) — migrated to the `shared/ui/` kit. Member rows and the
+ * per-currency summary rows both use `ui-list`/`ui-list-row`/
+ * `ui-list-cell`; loading/error branches use `ui-loading`/`ui-alert`
+ * exactly like every other migrated list page.
+ *
+ * **Judgment call (documented per PR5's `join.page.ts` / PR6's
+ * `categories-list.page.ts` precedent of leaving undocumented gaps
+ * explicit rather than forcing a component fit)**: neither the invite
+ * URL text (`invite-url`) nor the summary grand total
+ * (`summary-grand-total`) has a dedicated kit "value display" component
+ * — the kit only offers structural containers (`ui-card`, `ui-list*`),
+ * status components (`ui-loading`/`ui-alert`/`ui-empty-state`) and form
+ * controls, none of which fit a single translated label + raw value
+ * line. Both stay plain native `<p data-testid="…">` elements styled with
+ * Tailwind utilities directly, matching invariant 1 (the testid stays on
+ * the same kind of native element it was on before migration — here, no
+ * migration of the element at all, since no kit component exists for it).
  */
 @Component({
   selector: 'app-workspace-page',
-  imports: [TranslocoPipe],
+  imports: [
+    TranslocoPipe,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiCardComponent,
+    UiListCellComponent,
+    UiListComponent,
+    UiListRowComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ 'workspace.title' | transloco }}</h1>
+    <section class="mx-auto w-full max-w-3xl px-4 py-6">
+      <ui-page-header titleKey="workspace.title" />
 
       @if (loading()) {
-        <p>{{ 'workspace.loading' | transloco }}</p>
+        <ui-loading messageKey="workspace.loading" />
       } @else if (loadError()) {
-        <p role="alert">{{ 'workspace.loadError' | transloco }}</p>
+        <ui-alert messageKey="workspace.loadError" />
       } @else if (workspace(); as ws) {
-        <h2>{{ ws.name }}</h2>
+        <ui-card>
+          <h2 class="text-lg font-semibold text-on-surface">{{ ws.name }}</h2>
 
-        <ul>
-          @for (member of ws.members; track member.user_id) {
-            <li>
-              <span>{{ member.email }}</span>
-              @if (member.user_id !== currentUserId()) {
-                <button type="button" (click)="removeMember(member.user_id)">
-                  {{ 'workspace.removeMember' | transloco }}
-                </button>
-              }
-            </li>
+          <ui-list testId="workspace-members" class="mt-3">
+            @for (member of ws.members; track member.user_id) {
+              <ui-list-row>
+                <ui-list-cell>
+                  <span>{{ member.email }}</span>
+                </ui-list-cell>
+                @if (member.user_id !== currentUserId()) {
+                  <ui-list-cell class="md:ml-auto">
+                    <ui-button variant="secondary" size="sm" (click)="removeMember(member.user_id)">
+                      {{ 'workspace.removeMember' | transloco }}
+                    </ui-button>
+                  </ui-list-cell>
+                }
+              </ui-list-row>
+            }
+          </ui-list>
+
+          <ui-button variant="primary" (click)="generateInvite()" class="mt-3">
+            {{ 'workspace.generateInvite' | transloco }}
+          </ui-button>
+
+          @if (inviteUrl(); as url) {
+            <p data-testid="invite-url" class="mt-2 text-sm text-on-surface-muted">{{ url }}</p>
           }
-        </ul>
-
-        <button type="button" (click)="generateInvite()">
-          {{ 'workspace.generateInvite' | transloco }}
-        </button>
-
-        @if (inviteUrl(); as url) {
-          <p data-testid="invite-url">{{ url }}</p>
-        }
+        </ui-card>
 
         @if (actionErrorKey(); as key) {
-          <p role="alert">{{ key | transloco }}</p>
+          <ui-alert [messageKey]="key" class="mt-3" />
         }
       }
 
       @if (summary(); as s) {
-        <section data-testid="summary">
-          <h2>{{ 'summary.title' | transloco }}</h2>
-          <ul>
+        <ui-card testId="summary" class="mt-4">
+          <h2 class="text-lg font-semibold text-on-surface">{{ 'summary.title' | transloco }}</h2>
+          <ui-list class="mt-3">
             @for (row of s.by_currency; track row.currency) {
-              <li>{{ row.currency }}: {{ row.total }}</li>
+              <ui-list-row>
+                <ui-list-cell>
+                  <span>{{ row.currency }}: {{ row.total }}</span>
+                </ui-list-cell>
+              </ui-list-row>
             }
-          </ul>
-          <p data-testid="summary-grand-total">
+          </ui-list>
+          <p data-testid="summary-grand-total" class="mt-2 font-medium text-on-surface">
             {{ 'summary.grandTotal' | transloco }}: {{ s.grand_total }}
           </p>
-        </section>
+        </ui-card>
       } @else if (summaryError()) {
-        <p role="alert">{{ 'summary.loadError' | transloco }}</p>
+        <ui-alert messageKey="summary.loadError" class="mt-4" />
       }
     </section>
   `,
