@@ -1,17 +1,27 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiEmptyStateComponent,
+  UiInputComponent,
+  UiListCellComponent,
+  UiListComponent,
+  UiListRowComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+} from '../../../shared/ui';
 import { AccountsService } from '../../accounts/data/accounts.service';
 import { TemplatesService } from '../data/templates.service';
 
 /**
- * Templates list (Phase 4 PR5, task 5.1): renders `GET /api/templates`
- * with a per-row "apply" action (`POST /api/templates/{id}/apply`,
- * design D56 — the only accepted override is an optional `occurred_on`
- * date, defaulting to today when left blank), an "add template" link,
- * an edit link, and a delete action per row.
+ * Templates list (Phase 4 PR5, task 5.1; migrated to the shared/ui kit in
+ * Phase 11 PR9, task 11.1): renders `GET /api/templates` with a per-row
+ * "apply" action (`POST /api/templates/{id}/apply`, design D56 — the only
+ * accepted override is an optional `occurred_on` date, defaulting to today
+ * when left blank), an "add template" link, an edit link, and a delete
+ * action per row.
  *
  * Template visibility is enforced entirely server-side by
  * `visible_templates(scope, account_id)` — this page never filters or
@@ -20,53 +30,86 @@ import { TemplatesService } from '../data/templates.service';
  */
 @Component({
   selector: 'app-templates-list-page',
-  imports: [FormsModule, RouterLink, TranslocoPipe],
+  imports: [
+    TranslocoPipe,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiEmptyStateComponent,
+    UiInputComponent,
+    UiListCellComponent,
+    UiListComponent,
+    UiListRowComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ 'templates.title' | transloco }}</h1>
-
-      <a routerLink="/templates/new">{{ 'templates.create' | transloco }}</a>
+    <section class="mx-auto w-full max-w-4xl px-4 py-6">
+      <ui-page-header titleKey="templates.title">
+        <ui-button link="/templates/new" variant="primary">
+          {{ 'templates.create' | transloco }}
+        </ui-button>
+      </ui-page-header>
 
       @if (loading()) {
-        <p>{{ 'templates.loading' | transloco }}</p>
+        <ui-loading messageKey="templates.loading" />
       } @else if (loadError()) {
-        <p role="alert">{{ 'templates.loadError' | transloco }}</p>
+        <ui-alert messageKey="templates.loadError" />
+      } @else if (templates().length === 0) {
+        <ui-empty-state
+          testId="templates-empty"
+          titleKey="templates.empty.title"
+          messageKey="templates.empty.body"
+        >
+          <ui-button link="/templates/new" variant="primary">
+            {{ 'templates.create' | transloco }}
+          </ui-button>
+        </ui-empty-state>
       } @else {
-        <ul data-testid="templates-list">
+        <ui-list testId="templates-list">
           @for (template of templates(); track template.id) {
-            <li>
-              <span data-testid="template-name">{{ template.name }}</span>
-              <span data-testid="template-account">{{ accountName(template.account_id) }}</span>
-              <span data-testid="template-amount">{{ template.amount }}</span>
+            <ui-list-row>
+              <ui-list-cell labelKey="templates.name">
+                <span data-testid="template-name">{{ template.name }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="templates.account">
+                <span data-testid="template-account">{{ accountName(template.account_id) }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="templates.amount">
+                <span data-testid="template-amount">{{ template.amount }}</span>
+              </ui-list-cell>
 
-              <a [routerLink]="['/templates', template.id, 'edit']">
-                {{ 'templates.edit' | transloco }}
-              </a>
+              <ui-list-cell>
+                <ui-input
+                  type="date"
+                  [testId]="'template-apply-date-' + template.id"
+                  [value]="applyDateFor(template.id)"
+                  (valueChange)="setApplyDate(template.id, $event)"
+                />
+              </ui-list-cell>
 
-              <input
-                type="date"
-                [attr.data-testid]="'template-apply-date-' + template.id"
-                [ngModel]="applyDateFor(template.id)"
-                (ngModelChange)="setApplyDate(template.id, $event)"
-              />
-              <button
-                type="button"
-                [attr.data-testid]="'template-apply-' + template.id"
-                (click)="applyTemplate(template.id)"
-              >
-                {{ 'templates.apply' | transloco }}
-              </button>
-
-              <button type="button" (click)="deleteTemplate(template.id)">
-                {{ 'templates.delete' | transloco }}
-              </button>
-            </li>
+              <ui-list-cell class="md:ml-auto">
+                <ui-button
+                  variant="secondary"
+                  size="sm"
+                  [testId]="'template-apply-' + template.id"
+                  (click)="applyTemplate(template.id)"
+                >
+                  {{ 'templates.apply' | transloco }}
+                </ui-button>
+                <ui-button link="/templates/{{ template.id }}/edit" variant="secondary" size="sm">
+                  {{ 'templates.edit' | transloco }}
+                </ui-button>
+                <ui-button variant="danger" size="sm" (click)="deleteTemplate(template.id)">
+                  {{ 'templates.delete' | transloco }}
+                </ui-button>
+              </ui-list-cell>
+            </ui-list-row>
           }
-        </ul>
+        </ui-list>
       }
 
       @if (actionErrorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
     </section>
   `,

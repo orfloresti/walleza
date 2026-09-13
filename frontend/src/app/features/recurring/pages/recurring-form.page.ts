@@ -2,8 +2,19 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
-import { TranslocoPipe } from '@jsverse/transloco';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiButtonComponent,
+  UiCheckboxComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+  UiSelectComponent,
+  type UiSelectOption,
+} from '../../../shared/ui';
 import { AccountsService } from '../../accounts/data/accounts.service';
 import { CategoriesService } from '../../categories/data/categories.service';
 import {
@@ -24,8 +35,9 @@ import {
 } from '../data/recurring.service';
 
 /**
- * Create/edit recurring-transaction form (Phase 4 PR5, task 5.2): account,
- * type, amount, notes, is_refund, is_subscription, repeat_every, period,
+ * Create/edit recurring-transaction form (Phase 4 PR5, task 5.2; migrated
+ * to the shared/ui kit in Phase 11 PR9, task 11.2): account, type,
+ * amount, notes, is_refund, is_subscription, repeat_every, period,
  * starts_on (create-only, design D49's immutable anchor), ends_on,
  * reminder_days_before, reminder_locale, and an inline split-allocation
  * editor reused verbatim from `features/transactions/ui/split-allocation-
@@ -40,173 +52,159 @@ import {
  * before today, every missed occurrence between then and today is
  * generated and posted as REAL transactions once the recurrence is
  * saved (the catch-up bound generates, it never fast-forwards silently) —
- * `recurring.backfillWarning` is rendered inline, directly below the
- * `starts_on` input, whenever that condition holds, and never otherwise.
+ * rendered as `ui-alert variant="warning" [messageKey]="'recurring.
+ * backfillWarning'"` directly below the `starts_on` input, whenever that
+ * condition holds, and never otherwise. This is a TRANSLATED, static copy
+ * string, unlike the verbatim 422 branch below — it never carries
+ * server-controlled content, so routing it through `messageKey` (not
+ * `message`) is correct here.
  *
  * A `:id` route param switches the form into edit mode. Money is kept as
  * a raw `string` end-to-end (design D19).
  */
 @Component({
   selector: 'app-recurring-form-page',
-  imports: [FormsModule, TranslocoPipe, SplitAllocationRowsComponent],
+  imports: [
+    FormsModule,
+    TranslocoPipe,
+    SplitAllocationRowsComponent,
+    UiAlertComponent,
+    UiButtonComponent,
+    UiCheckboxComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+    UiSelectComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ (isEditMode() ? 'recurring.editTitle' : 'recurring.createTitle') | transloco }}</h1>
+    <section class="mx-auto w-full max-w-2xl px-4 py-6">
+      <ui-page-header
+        [titleKey]="isEditMode() ? 'recurring.editTitle' : 'recurring.createTitle'"
+      />
 
       @if (loading()) {
-        <p>{{ 'recurring.loading' | transloco }}</p>
+        <ui-loading messageKey="recurring.loading" />
       } @else {
-        <form (ngSubmit)="save()">
-          <label>
-            {{ 'recurring.account' | transloco }}
-            <select
+        <form (ngSubmit)="save()" class="flex flex-col gap-3">
+          <ui-field labelKey="recurring.account">
+            <ui-select
               name="accountId"
-              required
-              data-testid="recurring-account-select"
-              [ngModel]="accountId()"
-              (ngModelChange)="accountId.set($event)"
-            >
-              <option value="">{{ 'recurring.selectAccount' | transloco }}</option>
-              @for (account of accounts(); track account.id) {
-                <option [value]="account.id">{{ account.name }}</option>
-              }
-            </select>
-          </label>
+              [required]="true"
+              testId="recurring-account-select"
+              [options]="accountOptions()"
+              placeholderKey="recurring.selectAccount"
+              [value]="accountId()"
+              (valueChange)="accountId.set($event)"
+            />
+          </ui-field>
 
-          <label>
-            {{ 'recurring.type' | transloco }}
-            <select
+          <ui-field labelKey="recurring.type">
+            <ui-select
               name="type"
-              data-testid="recurring-type-select"
-              [ngModel]="type()"
-              (ngModelChange)="type.set($event)"
-            >
-              <option value="expense">{{ 'recurring.expense' | transloco }}</option>
-              <option value="income">{{ 'recurring.income' | transloco }}</option>
-            </select>
-          </label>
+              testId="recurring-type-select"
+              [options]="typeOptions()"
+              [value]="type()"
+              (valueChange)="setType($event)"
+            />
+          </ui-field>
 
-          <label>
-            {{ 'recurring.amount' | transloco }}
-            <input
-              type="text"
+          <ui-field labelKey="recurring.amount">
+            <ui-input
               name="amount"
-              required
-              data-testid="recurring-amount-input"
-              [ngModel]="amount()"
-              (ngModelChange)="amount.set($event)"
+              [required]="true"
+              testId="recurring-amount-input"
+              [value]="amount()"
+              (valueChange)="amount.set($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'recurring.notes' | transloco }}
-            <input type="text" name="notes" [ngModel]="notes()" (ngModelChange)="notes.set($event)" />
-          </label>
+          <ui-field labelKey="recurring.notes">
+            <ui-input name="notes" [value]="notes()" (valueChange)="notes.set($event)" />
+          </ui-field>
 
-          <label>
-            <input
-              type="checkbox"
-              name="isRefund"
-              [ngModel]="isRefund()"
-              (ngModelChange)="isRefund.set($event)"
-            />
-            {{ 'recurring.isRefund' | transloco }}
-          </label>
+          <ui-field labelKey="recurring.isRefund" layout="inline">
+            <ui-checkbox name="isRefund" [(checked)]="isRefund" />
+          </ui-field>
 
-          <label>
-            <input
-              type="checkbox"
+          <ui-field labelKey="recurring.isSubscription" layout="inline">
+            <ui-checkbox
               name="isSubscription"
-              data-testid="recurring-is-subscription-checkbox"
-              [ngModel]="isSubscription()"
-              (ngModelChange)="isSubscription.set($event)"
+              testId="recurring-is-subscription-checkbox"
+              [(checked)]="isSubscription"
             />
-            {{ 'recurring.isSubscription' | transloco }}
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'recurring.repeatEvery' | transloco }}
-            <input
+          <ui-field labelKey="recurring.repeatEvery">
+            <ui-input
               type="number"
               name="repeatEvery"
-              required
-              min="1"
-              data-testid="recurring-repeat-every-input"
-              [ngModel]="repeatEvery()"
-              (ngModelChange)="repeatEvery.set($event)"
+              [required]="true"
+              testId="recurring-repeat-every-input"
+              [value]="repeatEvery().toString()"
+              (valueChange)="setRepeatEvery($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'recurring.period' | transloco }}
-            <select
+          <ui-field labelKey="recurring.period">
+            <ui-select
               name="period"
-              data-testid="recurring-period-select"
-              [ngModel]="period()"
-              (ngModelChange)="period.set($event)"
-            >
-              <option value="day">{{ 'recurring.periodDay' | transloco }}</option>
-              <option value="week">{{ 'recurring.periodWeek' | transloco }}</option>
-              <option value="month">{{ 'recurring.periodMonth' | transloco }}</option>
-              <option value="year">{{ 'recurring.periodYear' | transloco }}</option>
-            </select>
-          </label>
+              testId="recurring-period-select"
+              [options]="periodOptions()"
+              [value]="period()"
+              (valueChange)="setPeriod($event)"
+            />
+          </ui-field>
 
           @if (!isEditMode()) {
-            <label>
-              {{ 'recurring.startsOn' | transloco }}
-              <input
+            <ui-field labelKey="recurring.startsOn">
+              <ui-input
                 type="date"
                 name="startsOn"
-                required
-                data-testid="recurring-starts-on-input"
-                [ngModel]="startsOn()"
-                (ngModelChange)="startsOn.set($event)"
+                [required]="true"
+                testId="recurring-starts-on-input"
+                [value]="startsOn()"
+                (valueChange)="startsOn.set($event)"
               />
-            </label>
+            </ui-field>
             @if (showBackfillWarning()) {
-              <p role="alert" data-testid="recurring-backfill-warning">
-                {{ 'recurring.backfillWarning' | transloco }}
-              </p>
+              <ui-alert
+                variant="warning"
+                testId="recurring-backfill-warning"
+                messageKey="recurring.backfillWarning"
+              />
             }
           }
 
-          <label>
-            {{ 'recurring.endsOn' | transloco }}
-            <input
+          <ui-field labelKey="recurring.endsOn">
+            <ui-input
               type="date"
               name="endsOn"
-              data-testid="recurring-ends-on-input"
-              [ngModel]="endsOn()"
-              (ngModelChange)="endsOn.set($event)"
+              testId="recurring-ends-on-input"
+              [value]="endsOn()"
+              (valueChange)="endsOn.set($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'recurring.reminderDaysBefore' | transloco }}
-            <input
+          <ui-field labelKey="recurring.reminderDaysBefore">
+            <ui-input
               type="number"
               name="reminderDaysBefore"
-              min="0"
-              max="30"
-              data-testid="recurring-reminder-days-input"
-              [ngModel]="reminderDaysBefore()"
-              (ngModelChange)="reminderDaysBefore.set($event)"
+              testId="recurring-reminder-days-input"
+              [value]="reminderDaysBeforeText()"
+              (valueChange)="setReminderDaysBefore($event)"
             />
-          </label>
+          </ui-field>
 
-          <label>
-            {{ 'recurring.reminderLocale' | transloco }}
-            <select
+          <ui-field labelKey="recurring.reminderLocale">
+            <ui-select
               name="reminderLocale"
-              data-testid="recurring-reminder-locale-select"
-              [ngModel]="reminderLocale()"
-              (ngModelChange)="reminderLocale.set($event)"
-            >
-              <option value="en">English</option>
-              <option value="es">Español</option>
-            </select>
-          </label>
+              testId="recurring-reminder-locale-select"
+              [options]="reminderLocaleOptions"
+              [value]="reminderLocale()"
+              (valueChange)="setReminderLocale($event)"
+            />
+          </ui-field>
 
           <app-split-allocation-rows
             [categories]="categories()"
@@ -214,17 +212,17 @@ import {
             [mismatchError]="splitMismatchError()"
           />
 
-          <button type="submit">
+          <ui-button type="submit" variant="primary">
             {{ (isEditMode() ? 'recurring.save' : 'recurring.create') | transloco }}
-          </button>
+          </ui-button>
         </form>
       }
 
       @if (errorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
       @if (serverErrorDetail(); as detail) {
-        <p role="alert" data-testid="recurring-server-error">{{ detail }}</p>
+        <ui-alert [message]="detail" testId="recurring-server-error" />
       }
     </section>
   `,
@@ -235,9 +233,31 @@ export class RecurringFormPage {
   private readonly categoriesService = inject(CategoriesService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly transloco = inject(TranslocoService);
 
   protected readonly accounts = this.accountsService.accounts;
   protected readonly categories = this.categoriesService.categories;
+
+  protected readonly accountOptions = computed<UiSelectOption[]>(() =>
+    this.accounts().map((a) => ({ value: a.id, label: a.name })),
+  );
+
+  protected readonly typeOptions = computed<UiSelectOption[]>(() => [
+    { value: 'expense', label: this.transloco.translate('recurring.expense') },
+    { value: 'income', label: this.transloco.translate('recurring.income') },
+  ]);
+
+  protected readonly periodOptions = computed<UiSelectOption[]>(() => [
+    { value: 'day', label: this.transloco.translate('recurring.periodDay') },
+    { value: 'week', label: this.transloco.translate('recurring.periodWeek') },
+    { value: 'month', label: this.transloco.translate('recurring.periodMonth') },
+    { value: 'year', label: this.transloco.translate('recurring.periodYear') },
+  ]);
+
+  protected readonly reminderLocaleOptions: UiSelectOption[] = [
+    { value: 'en', label: 'English' },
+    { value: 'es', label: 'Español' },
+  ];
 
   protected readonly recurringId = signal<string | null>(null);
   protected readonly isEditMode = signal(false);
@@ -257,6 +277,11 @@ export class RecurringFormPage {
   protected readonly endsOn = signal('');
   protected readonly reminderDaysBefore = signal<number | null>(null);
   protected readonly reminderLocale = signal<ReminderLocale>('en');
+
+  protected readonly reminderDaysBeforeText = computed(() => {
+    const value = this.reminderDaysBefore();
+    return value === null ? '' : value.toString();
+  });
 
   protected readonly splitRows = signal<SplitRowValue[]>([]);
   protected readonly splitMismatchError = signal<SplitMismatchError | null>(null);
@@ -284,6 +309,26 @@ export class RecurringFormPage {
     } else {
       this.loading.set(false);
     }
+  }
+
+  protected setType(value: string): void {
+    this.type.set(value as RecurringType);
+  }
+
+  protected setPeriod(value: string): void {
+    this.period.set(value as RecurringPeriod);
+  }
+
+  protected setReminderLocale(value: string): void {
+    this.reminderLocale.set(value as ReminderLocale);
+  }
+
+  protected setRepeatEvery(value: string): void {
+    this.repeatEvery.set(Number(value) || 0);
+  }
+
+  protected setReminderDaysBefore(value: string): void {
+    this.reminderDaysBefore.set(value === '' ? null : Number(value));
   }
 
   private loadExisting(id: string): void {
@@ -363,12 +408,14 @@ export class RecurringFormPage {
       next: () => void this.router.navigateByUrl('/recurring'),
       error: (err: HttpErrorResponse) => {
         if (err.status === 422) {
-          const detail = (err.error as { detail?: unknown } | null)?.detail;
-          const mismatch = parseSplitMismatchError(detail);
+          const mismatch = parseSplitMismatchError(
+            (err.error as { detail?: unknown } | null)?.detail,
+          );
           if (mismatch) {
             this.splitMismatchError.set(mismatch);
             return;
           }
+          const detail = (err.error as { detail?: unknown } | null)?.detail;
           if (typeof detail === 'string') {
             this.serverErrorDetail.set(detail);
             return;
