@@ -4,6 +4,8 @@ import { TranslocoPipe } from '@jsverse/transloco';
 import { Observable, of, switchMap, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 
+import { UiFieldComponent } from '../../../../shared/ui/field/ui-field.component';
+import { UiFileInputComponent } from '../../../../shared/ui/file-input/ui-file-input.component';
 import { TransactionsService } from '../../data/transactions.service';
 
 /**
@@ -33,18 +35,16 @@ import { TransactionsService } from '../../data/transactions.service';
  */
 @Component({
   selector: 'app-receipt-upload',
-  imports: [TranslocoPipe],
+  imports: [TranslocoPipe, UiFileInputComponent, UiFieldComponent],
   template: `
     <div data-testid="receipt-upload">
-      <label>
-        {{ 'transactions.photo.label' | transloco }}
-        <input
-          type="file"
-          data-testid="receipt-file-input"
+      <ui-field labelKey="transactions.photo.label">
+        <ui-file-input
+          testId="receipt-file-input"
           accept="image/jpeg,image/png,image/webp,image/heic"
-          (change)="onFileSelected($event)"
+          (fileSelected)="onFileSelected($event)"
         />
-      </label>
+      </ui-field>
 
       @if (selectedFile(); as file) {
         <p data-testid="receipt-selected-file">{{ file.name }}</p>
@@ -68,9 +68,8 @@ export class ReceiptUploadComponent {
   protected readonly uploading = signal(false);
   protected readonly errorKey = signal<string | null>(null);
 
-  protected onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.selectedFile.set(input.files?.[0] ?? null);
+  protected onFileSelected(file: File | null): void {
+    this.selectedFile.set(file);
     this.errorKey.set(null);
   }
 
