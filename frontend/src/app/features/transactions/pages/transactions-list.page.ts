@@ -1,8 +1,22 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { TranslocoPipe } from '@jsverse/transloco';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 
+import {
+  UiAlertComponent,
+  UiBadgeComponent,
+  UiButtonComponent,
+  UiCardComponent,
+  UiEmptyStateComponent,
+  UiFieldComponent,
+  UiInputComponent,
+  UiListCellComponent,
+  UiListComponent,
+  UiListRowComponent,
+  UiLoadingComponent,
+  UiPageHeaderComponent,
+  UiSelectComponent,
+  type UiSelectOption,
+} from '../../../shared/ui';
 import { AccountsService } from '../../accounts/data/accounts.service';
 import { CategoriesService } from '../../categories/data/categories.service';
 import {
@@ -32,115 +46,146 @@ import {
  */
 @Component({
   selector: 'app-transactions-list-page',
-  imports: [FormsModule, RouterLink, TranslocoPipe],
+  imports: [
+    TranslocoPipe,
+    UiAlertComponent,
+    UiBadgeComponent,
+    UiButtonComponent,
+    UiCardComponent,
+    UiEmptyStateComponent,
+    UiFieldComponent,
+    UiInputComponent,
+    UiListCellComponent,
+    UiListComponent,
+    UiListRowComponent,
+    UiLoadingComponent,
+    UiPageHeaderComponent,
+    UiSelectComponent,
+  ],
   template: `
-    <section>
-      <h1>{{ 'transactions.title' | transloco }}</h1>
+    <section class="mx-auto w-full max-w-5xl px-4 py-6">
+      <ui-page-header titleKey="transactions.title">
+        <ui-button link="/transactions/new" variant="primary">
+          {{ 'transactions.create' | transloco }}
+        </ui-button>
+      </ui-page-header>
 
-      <a routerLink="/transactions/new">{{ 'transactions.create' | transloco }}</a>
-
-      <form data-testid="transactions-filters">
-        <label>
-          {{ 'transactions.filterAccount' | transloco }}
-          <select
-            name="filterAccount"
-            data-testid="filter-account"
-            [ngModel]="accountFilter()"
-            (ngModelChange)="setAccountFilter($event)"
-          >
-            <option value="">{{ 'transactions.filterAll' | transloco }}</option>
-            @for (account of accounts(); track account.id) {
-              <option [value]="account.id">{{ account.name }}</option>
-            }
-          </select>
-        </label>
-
-        <label>
-          {{ 'transactions.filterCategory' | transloco }}
-          <select
-            name="filterCategory"
-            data-testid="filter-category"
-            [ngModel]="categoryFilter()"
-            (ngModelChange)="setCategoryFilter($event)"
-          >
-            <option value="">{{ 'transactions.filterAll' | transloco }}</option>
-            @for (category of categories(); track category.id) {
-              <option [value]="category.id">{{ category.name }}</option>
-            }
-          </select>
-        </label>
-
-        <label>
-          {{ 'transactions.filterDateFrom' | transloco }}
-          <input
-            type="date"
-            name="filterDateFrom"
-            data-testid="filter-date-from"
-            [ngModel]="dateFromFilter()"
-            (ngModelChange)="setDateFromFilter($event)"
-          />
-        </label>
-
-        <label>
-          {{ 'transactions.filterDateTo' | transloco }}
-          <input
-            type="date"
-            name="filterDateTo"
-            data-testid="filter-date-to"
-            [ngModel]="dateToFilter()"
-            (ngModelChange)="setDateToFilter($event)"
-          />
-        </label>
-
-        <label>
-          {{ 'transactions.filterType' | transloco }}
-          <select
-            name="filterType"
-            data-testid="filter-type"
-            [ngModel]="typeFilter()"
-            (ngModelChange)="setTypeFilter($event)"
-          >
-            <option value="">{{ 'transactions.filterAll' | transloco }}</option>
-            <option value="expense">{{ 'transactions.expense' | transloco }}</option>
-            <option value="income">{{ 'transactions.income' | transloco }}</option>
-          </select>
-        </label>
-      </form>
+      <ui-card>
+        <form
+          data-testid="transactions-filters"
+          class="grid grid-cols-1 gap-3 md:grid-cols-5"
+        >
+          <ui-field labelKey="transactions.filterAccount">
+            <ui-select
+              name="filterAccount"
+              testId="filter-account"
+              [options]="accountOptions()"
+              placeholderKey="transactions.filterAll"
+              [value]="accountFilter()"
+              (valueChange)="setAccountFilter($event)"
+            />
+          </ui-field>
+          <ui-field labelKey="transactions.filterCategory">
+            <ui-select
+              name="filterCategory"
+              testId="filter-category"
+              [options]="categoryOptions()"
+              placeholderKey="transactions.filterAll"
+              [value]="categoryFilter()"
+              (valueChange)="setCategoryFilter($event)"
+            />
+          </ui-field>
+          <ui-field labelKey="transactions.filterDateFrom">
+            <ui-input
+              type="date"
+              name="filterDateFrom"
+              testId="filter-date-from"
+              [value]="dateFromFilter()"
+              (valueChange)="setDateFromFilter($event)"
+            />
+          </ui-field>
+          <ui-field labelKey="transactions.filterDateTo">
+            <ui-input
+              type="date"
+              name="filterDateTo"
+              testId="filter-date-to"
+              [value]="dateToFilter()"
+              (valueChange)="setDateToFilter($event)"
+            />
+          </ui-field>
+          <ui-field labelKey="transactions.filterType">
+            <ui-select
+              name="filterType"
+              testId="filter-type"
+              [options]="typeOptions()"
+              placeholderKey="transactions.filterAll"
+              [value]="typeFilter()"
+              (valueChange)="setTypeFilter($event)"
+            />
+          </ui-field>
+        </form>
+      </ui-card>
 
       @if (loading()) {
-        <p>{{ 'transactions.loading' | transloco }}</p>
+        <ui-loading messageKey="transactions.loading" />
       } @else if (loadError()) {
-        <p role="alert">{{ 'transactions.loadError' | transloco }}</p>
+        <ui-alert messageKey="transactions.loadError" />
+      } @else if (transactions().length === 0) {
+        <ui-empty-state
+          testId="transactions-empty"
+          titleKey="transactions.empty.title"
+          messageKey="transactions.empty.body"
+        >
+          <ui-button link="/transactions/new" variant="primary">
+            {{ 'transactions.create' | transloco }}
+          </ui-button>
+        </ui-empty-state>
       } @else {
-        <ul data-testid="transactions-list">
+        <ui-list testId="transactions-list">
           @for (transaction of transactions(); track transaction.id) {
-            <li>
-              <span>{{ transaction.occurred_on }}</span>
-              <span>{{ accountName(transaction.account_id) }}</span>
-              <span data-testid="transaction-type">{{ transaction.type }}</span>
-              <span data-testid="transaction-amount">{{ transaction.amount }}</span>
+            <ui-list-row>
+              <ui-list-cell labelKey="transactions.filterDateFrom">
+                <span>{{ transaction.occurred_on }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="transactions.filterAccount">
+                <span>{{ accountName(transaction.account_id) }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="transactions.type">
+                <span data-testid="transaction-type">{{ transaction.type }}</span>
+              </ui-list-cell>
+              <ui-list-cell labelKey="transactions.amount">
+                <span data-testid="transaction-amount">{{ transaction.amount }}</span>
+              </ui-list-cell>
               @if (transaction.notes) {
-                <span>{{ transaction.notes }}</span>
+                <ui-list-cell>
+                  <span>{{ transaction.notes }}</span>
+                </ui-list-cell>
               }
               @if (transaction.is_refund) {
-                <span data-testid="refund-badge">{{ 'transactions.refundBadge' | transloco }}</span>
+                <ui-badge variant="refund" testId="refund-badge">
+                  {{ 'transactions.refundBadge' | transloco }}
+                </ui-badge>
               }
               @if (transaction.checked) {
-                <span data-testid="checked-badge">{{ 'transactions.checkedBadge' | transloco }}</span>
+                <ui-badge variant="checked" testId="checked-badge">
+                  {{ 'transactions.checkedBadge' | transloco }}
+                </ui-badge>
               }
-              <a [routerLink]="['/transactions', transaction.id, 'edit']">
-                {{ 'transactions.edit' | transloco }}
-              </a>
-              <button type="button" (click)="deleteTransaction(transaction.id)">
-                {{ 'transactions.delete' | transloco }}
-              </button>
-            </li>
+              <ui-list-cell class="md:ml-auto">
+                <ui-button link="/transactions/{{ transaction.id }}/edit" variant="secondary" size="sm">
+                  {{ 'transactions.edit' | transloco }}
+                </ui-button>
+                <ui-button variant="danger" size="sm" (click)="deleteTransaction(transaction.id)">
+                  {{ 'transactions.delete' | transloco }}
+                </ui-button>
+              </ui-list-cell>
+            </ui-list-row>
           }
-        </ul>
+        </ui-list>
       }
 
       @if (actionErrorKey(); as key) {
-        <p role="alert">{{ key | transloco }}</p>
+        <ui-alert [messageKey]="key" />
       }
     </section>
   `,
@@ -149,6 +194,7 @@ export class TransactionsListPage {
   private readonly transactionsService = inject(TransactionsService);
   private readonly accountsService = inject(AccountsService);
   private readonly categoriesService = inject(CategoriesService);
+  private readonly transloco = inject(TranslocoService);
 
   protected readonly transactions = this.transactionsService.transactions;
   protected readonly accounts = this.accountsService.accounts;
@@ -163,6 +209,19 @@ export class TransactionsListPage {
   protected readonly dateFromFilter = signal('');
   protected readonly dateToFilter = signal('');
   protected readonly typeFilter = signal<TransactionType | ''>('');
+
+  protected readonly accountOptions = computed<UiSelectOption[]>(() =>
+    this.accounts().map((a) => ({ value: a.id, label: a.name })),
+  );
+
+  protected readonly categoryOptions = computed<UiSelectOption[]>(() =>
+    this.categories().map((c) => ({ value: c.id, label: c.name })),
+  );
+
+  protected readonly typeOptions = computed<UiSelectOption[]>(() => [
+    { value: 'expense', label: this.transloco.translate('transactions.expense') },
+    { value: 'income', label: this.transloco.translate('transactions.income') },
+  ]);
 
   private readonly accountNameById = computed(() => {
     const map = new Map<string, string>();
@@ -202,8 +261,8 @@ export class TransactionsListPage {
     this.load();
   }
 
-  protected setTypeFilter(value: TransactionType | ''): void {
-    this.typeFilter.set(value);
+  protected setTypeFilter(value: string): void {
+    this.typeFilter.set(value as TransactionType | '');
     this.load();
   }
 

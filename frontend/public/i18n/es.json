@@ -103,6 +103,10 @@
     "filterDateTo": "Hasta",
     "filterType": "Tipo",
     "filterAll": "Todas",
+    "empty": {
+      "title": "Aún no hay transacciones",
+      "body": "Las transacciones que agregues aparecerán aquí."
+    },
     "splits": {
       "title": "Dividir entre categorías",
       "category": "Categoría",
