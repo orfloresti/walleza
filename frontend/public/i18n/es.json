@@ -245,5 +245,36 @@
       "title": "Aún no hay presupuestos",
       "body": "Los presupuestos que crees aparecerán aquí."
     }
+  },
+  "reports": {
+    "title": "Reportes",
+    "loading": "Cargando reporte…",
+    "loadError": "No se pudo cargar este reporte. Intenta de nuevo.",
+    "filterDateRange": "Rango de fechas",
+    "filterCustomFrom": "Desde",
+    "filterCustomTo": "Hasta",
+    "filterBucket": "Agrupar por",
+    "filterCurrency": "Moneda",
+    "filterType": "Tipo",
+    "type": {
+      "expense": "Gasto",
+      "income": "Ingreso"
+    },
+    "preset": {
+      "this_month": "Este mes",
+      "last_3_months": "Últimos 3 meses",
+      "year_to_date": "Año hasta la fecha",
+      "custom": "Rango personalizado"
+    },
+    "bucket": {
+      "day": "Día",
+      "week": "Semana",
+      "month": "Mes",
+      "year": "Año"
+    },
+    "empty": {
+      "title": "Sin actividad en este rango",
+      "body": "No hay actividad de transacciones para el rango de fechas y la moneda seleccionados."
+    }
   }
 }
