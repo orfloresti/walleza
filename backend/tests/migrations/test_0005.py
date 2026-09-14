@@ -140,7 +140,12 @@ def migrated_db(
 
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
-    command.upgrade(cfg, "head")
+    # Pinned to "0005" rather than "head" (mirrors test_0003.py's own
+    # precedent, fixed for the identical reason Phase 5 PR1a's 0006
+    # migration surfaces here): this module tests exactly the guarantees
+    # 0005_templates_and_recurring makes, independent of how many later
+    # revisions (0006_budgets onward) get chained after it.
+    command.upgrade(cfg, "0005")
     try:
         yield engine
     finally:
@@ -819,7 +824,7 @@ def test_downgrade_one_step_drops_only_the_five_new_tables(
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0005")
 
         with engine.connect() as conn:
             workspace_id, account_id, _ = _seed_workspace_account_category(conn)
@@ -840,7 +845,7 @@ def test_downgrade_one_step_drops_only_the_five_new_tables(
             ).scalar()
         assert remaining_accounts == 1
 
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0005")
         inspector_after = sa.inspect(engine)
         assert set(inspector_after.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
     finally:
@@ -860,7 +865,7 @@ def test_downgrade_base_drops_every_product_table_including_new_ones(
     cfg = _alembic_config()
     engine = sa.create_engine(real_postgres.admin_url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0005")
 
         inspector = sa.inspect(engine)
         assert set(inspector.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
@@ -870,7 +875,7 @@ def test_downgrade_base_drops_every_product_table_including_new_ones(
         inspector_after = sa.inspect(engine)
         assert set(inspector_after.get_table_names(schema="app")) == {"alembic_version"}
 
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0005")
         inspector_replayed = sa.inspect(engine)
         assert set(inspector_replayed.get_table_names(schema="app")) == _ALL_TABLES_AT_HEAD
     finally:
