@@ -197,6 +197,49 @@ async def test_currency_mismatch_excludes_transactions(seed_user, app_factory) -
     assert response.json()["progress"]["spent"] == "0.00" or response.json()["progress"]["spent"] == "0"
 
 
+async def test_category_only_budget_aggregates_across_multiple_accounts(
+    seed_user, app_factory
+) -> None:
+    """Design D72: a category-only budget (`account_id=None`) has no
+    account predicate at all, so it must aggregate spend across every
+    same-currency account in the workspace, not just one."""
+    owner = seed_user(email="progress-multi-account@example.com")
+    app = app_factory()
+    transport = ASGITransport(app=app)
+    cookie = _cookie_for(owner)
+
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        account_a = await _bootstrap_account(client, cookie, currency="USD", name="A")
+        account_b = await _bootstrap_account(client, cookie, currency="USD", name="B")
+        category_id = await _bootstrap_category(client, cookie)
+
+        await _create_transaction(
+            client,
+            cookie,
+            account_id=account_a,
+            amount="50.00",
+            occurred_on=TODAY.isoformat(),
+            splits=[{"category_id": category_id, "amount": "50.00"}],
+        )
+        await _create_transaction(
+            client,
+            cookie,
+            account_id=account_b,
+            amount="30.00",
+            occurred_on=TODAY.isoformat(),
+            splits=[{"category_id": category_id, "amount": "30.00"}],
+        )
+
+        budget = await _create_budget(client, cookie, category_id=category_id, amount="500.00")
+        response = await client.get(
+            f"/api/budgets/{budget['id']}", cookies={"walleza_access": cookie}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["progress"]["spent"] == "80.00"
+
+
 async def test_account_scoped_budget_restricts_to_one_account(seed_user, app_factory) -> None:
     owner = seed_user(email="progress-account-scope@example.com")
     app = app_factory()
