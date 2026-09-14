@@ -100,6 +100,7 @@ describe('UiButtonComponent', () => {
     expect(anchor!.tagName).toBe('A');
     expect(anchor!.getAttribute('href')).toBe('/transfers/new');
     expect(el.querySelector('button')).toBeNull();
+    expect(anchor!.textContent?.trim()).toBe('Click me');
   });
 
   it('applies distinct literal class strings per variant and per size', async () => {
