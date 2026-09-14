@@ -32,6 +32,9 @@ const EXPECTED_TOKEN_CLASSES: Record<UiBadgeVariant, string[]> = {
   refund: ['bg-danger', 'text-on-danger'],
   checked: ['bg-success', 'text-on-success'],
   subscription: ['bg-primary', 'text-on-primary'],
+  on_track: ['bg-success', 'text-on-success'],
+  near_limit: ['bg-warning', 'text-on-warning'],
+  over_budget: ['bg-danger', 'text-on-danger'],
 };
 
 describe('UiBadgeComponent', () => {

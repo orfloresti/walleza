@@ -58,6 +58,11 @@ export const routes: Routes = [
     loadChildren: () => import('./features/recurring/recurring.routes').then((m) => m.routes),
   },
   {
+    path: 'budgets',
+    canActivate: [authGuard],
+    loadChildren: () => import('./features/budgets/budgets.routes').then((m) => m.routes),
+  },
+  {
     path: 'workspace',
     canActivate: [authGuard],
     loadChildren: () => import('./features/workspace/workspace.routes').then((m) => m.routes),
