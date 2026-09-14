@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17.6
+    container_name: walleza-postgres
+    restart: unless-stopped
+    env_file:
+      - .env.postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - walleza_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  walleza_postgres_data:
