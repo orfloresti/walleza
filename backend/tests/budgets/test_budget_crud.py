@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 
+import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 
 from app.security import issue_access_token
@@ -402,3 +403,43 @@ async def test_delete_category_referenced_by_budget_is_blocked_with_widened_mess
 
     assert delete_response.status_code == 409
     assert "budget" in delete_response.json()["detail"]
+
+
+async def test_deleting_account_cascades_to_its_budgets(
+    seed_user, app_factory, db_session
+) -> None:
+    """Design D68: `account_id` is `ON DELETE CASCADE` — deleting an
+    account must delete any budget scoped to it at the database level.
+    There is no public delete-account endpoint, so the FK behavior is
+    exercised with a direct SQL delete against `app.account`."""
+    owner = seed_user(email="budget-account-cascade@example.com")
+    app = app_factory()
+    transport = ASGITransport(app=app)
+    cookie = _cookie_for(owner)
+
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        category_id = await _bootstrap_category(client, cookie)
+        account_id = await _bootstrap_account(client, cookie)
+
+        created = await client.post(
+            "/api/budgets",
+            json={
+                "category_id": category_id,
+                "account_id": account_id,
+                "amount": "500",
+                "currency": "USD",
+            },
+            cookies={"walleza_access": cookie},
+        )
+        budget_id = created.json()["id"]
+
+    db_session.execute(
+        sa.text("DELETE FROM app.account WHERE id = :id"), {"id": uuid.UUID(account_id)}
+    )
+    db_session.commit()
+
+    remaining = db_session.execute(
+        sa.text("SELECT id FROM app.budget WHERE id = :id"), {"id": uuid.UUID(budget_id)}
+    ).first()
+    assert remaining is None
