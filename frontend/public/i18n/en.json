@@ -245,5 +245,36 @@
       "title": "No budgets yet",
       "body": "Budgets you create will show up here."
     }
+  },
+  "reports": {
+    "title": "Reports",
+    "loading": "Loading report…",
+    "loadError": "Could not load this report. Please try again.",
+    "filterDateRange": "Date range",
+    "filterCustomFrom": "From",
+    "filterCustomTo": "To",
+    "filterBucket": "Group by",
+    "filterCurrency": "Currency",
+    "filterType": "Type",
+    "type": {
+      "expense": "Expense",
+      "income": "Income"
+    },
+    "preset": {
+      "this_month": "This month",
+      "last_3_months": "Last 3 months",
+      "year_to_date": "Year to date",
+      "custom": "Custom range"
+    },
+    "bucket": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "year": "Year"
+    },
+    "empty": {
+      "title": "No activity in this range",
+      "body": "There is no transaction activity for the selected date range and currency."
+    }
   }
 }
