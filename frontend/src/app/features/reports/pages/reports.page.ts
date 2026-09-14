@@ -22,6 +22,8 @@ import {
   ReportType,
   Trend,
 } from '../data/reports.service';
+import { CategoryBreakdownChartComponent } from '../ui/category-breakdown-chart/category-breakdown-chart.component';
+import { TrendChartComponent } from '../ui/trend-chart/trend-chart.component';
 
 const PRESET_OPTIONS: readonly DateRangePreset[] = [
   'this_month',
@@ -66,31 +68,21 @@ const QUERY_PARAM = {
  * to a chart component.
  *
  * ---
- * ## PR2b handoff — chart placeholder slots (design D91/D92)
+ * ## Chart slots (design D91/D92, wired in PR2b)
  *
- * This unit intentionally does NOT build `features/reports/ui/
- * category-breakdown-chart.ts` / `trend-chart.ts` (that is PR2b's job,
- * design D91). The template below has two `@if` placeholder blocks, each
- * clearly commented `PR2b:`, gated on the SAME `hasActivity()` guard this
- * page already computes. PR2b's implementer should:
- *
- *   1. Import `CategoryBreakdownChartComponent`/`TrendChartComponent` from
- *      `../ui/*` into this component's `imports: []`.
- *   2. Replace each placeholder `<div>` with the real
- *      `<app-category-breakdown-chart [data]="breakdown()!" />` /
- *      `<app-trend-chart [data]="trend()!" />`, passing the already-loaded
- *      `breakdown`/`trend` signals below (both are `signal<T | null>`,
- *      already resolved and non-null inside the `hasActivity()` branch).
- *   3. Do NOT duplicate the D92 empty-state guard inside the chart
- *      components themselves for THIS page's call site — it is already
- *      enforced here, above chart construction, exactly as D92 requires.
- *      (Each chart's OWN spec suite should still test its empty-state
- *      guard in isolation, since the chart is also usable from other
- *      future call sites.)
+ * `CategoryBreakdownChartComponent`/`TrendChartComponent` (`features/
+ * reports/ui/*`) render inside the SAME `hasActivity()` branch this page
+ * already computes — the D92 empty-state guard is enforced here, above
+ * chart construction, and is NOT duplicated inside either chart component
+ * (each chart's own spec suite still tests its empty-state guard in
+ * isolation, since the chart is also usable from other future call
+ * sites).
  */
 @Component({
   selector: 'app-reports-page',
   imports: [
+    CategoryBreakdownChartComponent,
+    TrendChartComponent,
     UiAlertComponent,
     UiCardComponent,
     UiEmptyStateComponent,
@@ -183,10 +175,12 @@ const QUERY_PARAM = {
           messageKey="reports.empty.body"
         />
       } @else {
-        <!-- PR2b: replace with <app-category-breakdown-chart [data]="breakdown()!" /> -->
-        <div data-testid="reports-breakdown-placeholder"></div>
-        <!-- PR2b: replace with <app-trend-chart [data]="trend()!" /> -->
-        <div data-testid="reports-trend-placeholder"></div>
+        <ui-card>
+          <app-category-breakdown-chart [data]="breakdown()!" />
+        </ui-card>
+        <ui-card>
+          <app-trend-chart [data]="trend()!" />
+        </ui-card>
       }
     </section>
   `,

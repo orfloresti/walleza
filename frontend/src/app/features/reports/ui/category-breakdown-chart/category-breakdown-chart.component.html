@@ -1,0 +1,37 @@
+<svg
+  data-testid="breakdown-chart"
+  [attr.viewBox]="'0 0 ' + chartWidth + ' ' + chartHeight()"
+  preserveAspectRatio="xMinYMin meet"
+  class="w-full"
+  role="img"
+>
+  @for (bar of bars(); track bar.categoryId) {
+    <g [attr.transform]="'translate(0,' + bar.y + ')'">
+      <text
+        [attr.x]="0"
+        [attr.y]="bar.height / 2"
+        dominant-baseline="middle"
+        class="fill-current text-sm"
+      >
+        {{ bar.name }}
+      </text>
+      <rect
+        data-testid="breakdown-bar"
+        [attr.data-category-id]="bar.categoryId"
+        [attr.x]="labelWidth"
+        [attr.y]="0"
+        [attr.width]="bar.width"
+        [attr.height]="bar.height"
+        class="fill-primary"
+      />
+      <text
+        [attr.x]="labelWidth + bar.width + 4"
+        [attr.y]="bar.height / 2"
+        dominant-baseline="middle"
+        class="fill-current text-xs"
+      >
+        {{ bar.total }}
+      </text>
+    </g>
+  }
+</svg>
