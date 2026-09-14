@@ -14,8 +14,11 @@ import uuid
 from decimal import Decimal
 from typing import NamedTuple
 
+import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from app.accounts.models import Account
+from app.accounts.queries import visible_accounts
 from app.categories.models import Category
 from app.categories.queries import visible_categories
 from app.deps import WorkspaceScope
@@ -40,6 +43,27 @@ class TrendPoint(NamedTuple):
     bucket_end: datetime.date
     total: Decimal
     partial: bool
+
+
+def _validate_currency(db: Session, *, scope: WorkspaceScope, currency: str) -> None:
+    """Design D82: `currency` MUST match an ISO-4217 code used by at
+    least one account visible in the workspace (spec's
+    report-category-breakdown/report-trend domains) — a typo or an
+    unused-but-syntactically-valid code must be REJECTED with a 422, not
+    silently answered with an all-zero breakdown/trend. Reuses
+    `visible_accounts` (never a new visibility predicate, mirrors
+    `app.budgets.service._validate_account_reference`'s exact reasoning
+    for reusing scope-aware queries rather than a fresh currency
+    allowlist)."""
+    matches = db.execute(
+        sa.select(sa.literal(1))
+        .select_from(visible_accounts(scope).where(Account.currency == currency).subquery())
+        .limit(1)
+    ).first()
+    if matches is None:
+        raise ReportValidationError(
+            f"currency {currency!r} is not used by any account in this workspace"
+        )
 
 
 def roll_up(
@@ -107,6 +131,7 @@ def category_breakdown(
     """
     if date_from > date_to:
         raise ReportValidationError("date_from must not be after date_to")
+    _validate_currency(db, scope=scope, currency=currency)
 
     # ONE `visible_categories(scope)` fetch — no N+1 (proposal edge case
     # 7, mirrored from `app.budgets.service.list_budgets_with_progress`).
@@ -241,6 +266,7 @@ def trend(
     `ReportValidationError` (422 at the router) before any query runs."""
     if date_from > date_to:
         raise ReportValidationError("date_from must not be after date_to")
+    _validate_currency(db, scope=scope, currency=currency)
     bucket = resolve_bucket(bucket)
 
     rows = {
