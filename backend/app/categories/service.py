@@ -154,11 +154,12 @@ def update_category(
 
 
 def delete_category(db: Session, *, scope: WorkspaceScope, category_id: uuid.UUID) -> None:
-    """Design D28: the DB's `ON DELETE RESTRICT` on both `category.parent_id`
-    and `transaction_category_split.category_id` IS the enforcement
-    mechanism. This function only catches the resulting `IntegrityError`
-    and translates it into a clean 409 for the router — it never
-    reimplements a "has children" or "has splits" check itself."""
+    """Design D28/D67: the DB's `ON DELETE RESTRICT` on `category.parent_id`,
+    `transaction_category_split.category_id`, and (Phase 5) `budget.category_id`
+    IS the enforcement mechanism. This function only catches the resulting
+    `IntegrityError` and translates it into a clean 409 for the router — it
+    never reimplements a "has children"/"has splits"/"has budgets" check
+    itself."""
     category = get_category(db, scope=scope, category_id=category_id)
     try:
         db.delete(category)
@@ -166,5 +167,6 @@ def delete_category(db: Session, *, scope: WorkspaceScope, category_id: uuid.UUI
     except IntegrityError as exc:
         db.rollback()
         raise CategoryDeleteBlockedError(
-            "category has children or is referenced by transaction splits"
+            "category has children, is referenced by transaction splits, "
+            "or is referenced by a budget"
         ) from exc
