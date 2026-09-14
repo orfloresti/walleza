@@ -1,28 +1,30 @@
-"""Business logic for the `budget-management` capability (design D66-D70,
-D73). CRUD portion only (unit 1a) — progress computation (D71-D78) is
-unit 1b's responsibility and lands in this same module later.
+"""Business logic for the `budget-management` and `budget-progress`
+capabilities (design D66-D78).
 
 Every read/write here is built ONLY on top of
-`app.budgets.queries.visible_budgets` — this module never resolves
-membership itself and never builds a competing query path (mirrors
-`app.categories.service`'s exact structure). Referential validation
-(category/account existence+visibility) reuses `visible_categories`/
-`visible_accounts` directly, exactly as `app.categories.service`'s
-`_validate_parent_reference` reuses `visible_categories`.
+`app.budgets.queries.visible_budgets`/`budget_spent_totals` — this module
+never resolves membership itself and never builds a competing query path
+(mirrors `app.categories.service`'s exact structure). Referential
+validation (category/account existence+visibility) reuses
+`visible_categories`/`visible_accounts` directly, exactly as
+`app.categories.service`'s `_validate_parent_reference` reuses
+`visible_categories`.
 """
 
 from __future__ import annotations
 
+import calendar
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
 from app.accounts.models import Account
 from app.accounts.queries import visible_accounts
 from app.budgets.models import Budget
-from app.budgets.queries import visible_budgets
+from app.budgets.queries import budget_spent_totals, visible_budgets
 from app.categories.models import Category
 from app.categories.queries import visible_categories
 from app.deps import WorkspaceScope
@@ -160,3 +162,111 @@ def delete_budget(db: Session, *, scope: WorkspaceScope, budget_id: uuid.UUID) -
     budget = get_budget(db, scope=scope, budget_id=budget_id)
     db.delete(budget)
     db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Progress computation (design D71-D78) — unit 1b.
+# ---------------------------------------------------------------------------
+
+# Design D75: one shared constant, never scattered across router/frontend.
+# `on_track` below 80%, `near_limit` from 80% up to (but not including)
+# 100%, `over_budget` at or above 100%. `percent` itself is reported
+# unclamped (a 140%-over budget reports 140.0, not 100.0).
+BUDGET_NEAR_LIMIT_THRESHOLD = Decimal("0.80")
+BUDGET_OVER_BUDGET_THRESHOLD = Decimal("1.00")
+
+BudgetStatus = str  # Literal["on_track", "near_limit", "over_budget"] — see schemas.py
+
+
+def current_month_bounds(today: date) -> tuple[date, date]:
+    """`(first day, last day)` of `today`'s calendar month, both inclusive
+    (design D77). `visible_transactions` filters `date_to` with `<=`, so
+    the last day returned here is correct to pass straight through
+    without an off-by-one adjustment.
+
+    Deliberately does NOT reuse `app.recurring`'s anchor-based `shift()` —
+    that function tracks an anchor day across period boundaries for
+    recurring generation, a different concern with no period enum and no
+    drift to defend against here (design D77's explicit note)."""
+    first_day = today.replace(day=1)
+    _, days_in_month = calendar.monthrange(today.year, today.month)
+    last_day = today.replace(day=days_in_month)
+    return first_day, last_day
+
+
+def classify_status(*, limit: Decimal, spent: Decimal) -> tuple[float, BudgetStatus]:
+    """`(percent, status)` per design D75. `percent` is `spent / limit`,
+    left unclamped; `limit` is always `> 0` (DB CHECK), so no
+    divide-by-zero guard is needed."""
+    ratio = spent / limit
+    percent = float(ratio)
+    if ratio >= BUDGET_OVER_BUDGET_THRESHOLD:
+        status: BudgetStatus = "over_budget"
+    elif ratio >= BUDGET_NEAR_LIMIT_THRESHOLD:
+        status = "near_limit"
+    else:
+        status = "on_track"
+    return percent, status
+
+
+class BudgetProgress(NamedTuple):
+    limit: Decimal
+    spent: Decimal
+    remaining: Decimal
+    percent: float
+    status: BudgetStatus
+    period_start: date
+    period_end: date
+
+
+def _progress_from_spent(budget: Budget, spent: Decimal, period: tuple[date, date]) -> BudgetProgress:
+    percent, status = classify_status(limit=budget.amount, spent=spent)
+    period_start, period_end = period
+    return BudgetProgress(
+        limit=budget.amount,
+        spent=spent,
+        remaining=budget.amount - spent,
+        percent=percent,
+        status=status,
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+
+def get_budget_progress(
+    db: Session, *, scope: WorkspaceScope, budget_id: uuid.UUID, today: date | None = None
+) -> tuple[Budget, BudgetProgress]:
+    """Single-budget read: fetches the budget (404 if invisible) and its
+    current-month progress via the SAME grouped `budget_spent_totals`
+    query the list endpoint uses (design D71/D72/D74), narrowed to one
+    `budget_id` — not a hand-rolled second SUM expression."""
+    budget = get_budget(db, scope=scope, budget_id=budget_id)
+    period = current_month_bounds(today or datetime.now(UTC).date())
+    period_start, period_end = period
+    row = db.execute(
+        budget_spent_totals(
+            scope, period_start=period_start, period_end=period_end, budget_id=budget_id
+        )
+    ).one()
+    return budget, _progress_from_spent(budget, Decimal(row.spent), period)
+
+
+def list_budgets_with_progress(
+    db: Session, *, scope: WorkspaceScope, today: date | None = None
+) -> list[tuple[Budget, BudgetProgress]]:
+    """List every visible budget with its current-month progress attached,
+    computed via ONE grouped query (design D78) — never a per-budget SUM
+    loop."""
+    budgets = list_budgets(db, scope=scope)
+    period = current_month_bounds(today or datetime.now(UTC).date())
+    period_start, period_end = period
+    spent_by_budget_id = {
+        row.budget_id: Decimal(row.spent)
+        for row in db.execute(
+            budget_spent_totals(scope, period_start=period_start, period_end=period_end)
+        )
+    }
+    return [
+        (budget, _progress_from_spent(budget, spent_by_budget_id.get(budget.id, Decimal(0)), period))
+        for budget in budgets
+    ]

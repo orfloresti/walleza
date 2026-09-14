@@ -19,21 +19,36 @@ from app.deps import WorkspaceScope, require_membership
 router = APIRouter(tags=["budgets"], dependencies=[Depends(require_membership)])
 
 
-@router.get("/api/budgets", response_model=list[schemas.BudgetOut])
+def _with_progress(budget, progress: service.BudgetProgress) -> schemas.BudgetWithProgressOut:
+    return schemas.BudgetWithProgressOut(
+        **schemas.BudgetOut.model_validate(budget).model_dump(),
+        progress=schemas.BudgetProgressOut(
+            limit=progress.limit,
+            spent=progress.spent,
+            remaining=progress.remaining,
+            percent=progress.percent,
+            status=progress.status,
+            period_start=progress.period_start,
+            period_end=progress.period_end,
+        ),
+    )
+
+
+@router.get("/api/budgets", response_model=list[schemas.BudgetWithProgressOut])
 def list_budgets(
     scope: WorkspaceScope = Depends(require_membership),
     db: Session = Depends(get_db),
-) -> list[schemas.BudgetOut]:
-    budgets = service.list_budgets(db, scope=scope)
-    return [schemas.BudgetOut.model_validate(budget) for budget in budgets]
+) -> list[schemas.BudgetWithProgressOut]:
+    pairs = service.list_budgets_with_progress(db, scope=scope)
+    return [_with_progress(budget, progress) for budget, progress in pairs]
 
 
-@router.post("/api/budgets", response_model=schemas.BudgetOut, status_code=201)
+@router.post("/api/budgets", response_model=schemas.BudgetWithProgressOut, status_code=201)
 def create_budget(
     body: schemas.BudgetCreateIn,
     scope: WorkspaceScope = Depends(require_membership),
     db: Session = Depends(get_db),
-) -> schemas.BudgetOut:
+) -> schemas.BudgetWithProgressOut:
     try:
         budget = service.create_budget(
             db,
@@ -47,29 +62,30 @@ def create_budget(
     except service.BudgetValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.commit()
-    return schemas.BudgetOut.model_validate(budget)
+    _, progress = service.get_budget_progress(db, scope=scope, budget_id=budget.id)
+    return _with_progress(budget, progress)
 
 
-@router.get("/api/budgets/{budget_id}", response_model=schemas.BudgetOut)
+@router.get("/api/budgets/{budget_id}", response_model=schemas.BudgetWithProgressOut)
 def get_budget(
     budget_id: uuid.UUID,
     scope: WorkspaceScope = Depends(require_membership),
     db: Session = Depends(get_db),
-) -> schemas.BudgetOut:
+) -> schemas.BudgetWithProgressOut:
     try:
-        budget = service.get_budget(db, scope=scope, budget_id=budget_id)
+        budget, progress = service.get_budget_progress(db, scope=scope, budget_id=budget_id)
     except service.BudgetNotFoundError as exc:
         raise HTTPException(status_code=404, detail="budget not found") from exc
-    return schemas.BudgetOut.model_validate(budget)
+    return _with_progress(budget, progress)
 
 
-@router.patch("/api/budgets/{budget_id}", response_model=schemas.BudgetOut)
+@router.patch("/api/budgets/{budget_id}", response_model=schemas.BudgetWithProgressOut)
 def update_budget(
     budget_id: uuid.UUID,
     body: schemas.BudgetUpdateIn,
     scope: WorkspaceScope = Depends(require_membership),
     db: Session = Depends(get_db),
-) -> schemas.BudgetOut:
+) -> schemas.BudgetWithProgressOut:
     changes = body.model_dump(exclude_unset=True)
     try:
         budget = service.update_budget(db, scope=scope, budget_id=budget_id, changes=changes)
@@ -78,7 +94,8 @@ def update_budget(
     except service.BudgetValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.commit()
-    return schemas.BudgetOut.model_validate(budget)
+    _, progress = service.get_budget_progress(db, scope=scope, budget_id=budget.id)
+    return _with_progress(budget, progress)
 
 
 @router.delete("/api/budgets/{budget_id}", status_code=204)
