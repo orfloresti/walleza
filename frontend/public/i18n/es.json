@@ -213,5 +213,37 @@
       "title": "Aún no hay transacciones recurrentes",
       "body": "Las transacciones recurrentes que crees aparecerán aquí."
     }
+  },
+  "budgets": {
+    "title": "Presupuestos",
+    "loading": "Cargando presupuestos…",
+    "loadError": "No se pudieron cargar los presupuestos. Intenta de nuevo.",
+    "create": "Agregar presupuesto",
+    "createTitle": "Agregar presupuesto",
+    "editTitle": "Editar presupuesto",
+    "edit": "Editar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "deleteError": "No se pudo eliminar ese presupuesto. Intenta de nuevo.",
+    "saveError": "No se pudo guardar ese presupuesto. Intenta de nuevo.",
+    "category": "Categoría",
+    "selectCategory": "Selecciona una categoría",
+    "account": "Cuenta",
+    "allAccounts": "Todas las cuentas",
+    "name": "Nombre (opcional)",
+    "amount": "Monto",
+    "currency": "Moneda",
+    "limit": "Límite",
+    "spent": "Gastado",
+    "remaining": "Restante",
+    "status": {
+      "on_track": "En orden",
+      "near_limit": "Cerca del límite",
+      "over_budget": "Sobregirado"
+    },
+    "empty": {
+      "title": "Aún no hay presupuestos",
+      "body": "Los presupuestos que crees aparecerán aquí."
+    }
   }
 }

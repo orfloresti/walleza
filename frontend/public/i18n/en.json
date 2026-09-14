@@ -213,5 +213,37 @@
       "title": "No recurring transactions yet",
       "body": "Recurring transactions you create will show up here."
     }
+  },
+  "budgets": {
+    "title": "Budgets",
+    "loading": "Loading budgets…",
+    "loadError": "Could not load budgets. Please try again.",
+    "create": "Add budget",
+    "createTitle": "Add budget",
+    "editTitle": "Edit budget",
+    "edit": "Edit",
+    "save": "Save",
+    "delete": "Delete",
+    "deleteError": "Could not delete that budget. Please try again.",
+    "saveError": "Could not save that budget. Please try again.",
+    "category": "Category",
+    "selectCategory": "Select a category",
+    "account": "Account",
+    "allAccounts": "All accounts",
+    "name": "Name (optional)",
+    "amount": "Amount",
+    "currency": "Currency",
+    "limit": "Limit",
+    "spent": "Spent",
+    "remaining": "Remaining",
+    "status": {
+      "on_track": "On track",
+      "near_limit": "Near limit",
+      "over_budget": "Over budget"
+    },
+    "empty": {
+      "title": "No budgets yet",
+      "body": "Budgets you create will show up here."
+    }
   }
 }

@@ -17,6 +17,7 @@ describe('App', () => {
               transfers: { title: 'Transfers' },
               templates: { title: 'Templates' },
               recurring: { title: 'Recurring transactions' },
+              budgets: { title: 'Budgets' },
               workspace: { title: 'Workspace' },
               common: { menu: { toggle: 'Menu' } },
             },
@@ -56,11 +57,12 @@ describe('App', () => {
       '/transfers',
       '/templates',
       '/recurring',
+      '/budgets',
       '/workspace',
     ]);
   });
 
-  it('keeps rendering all 7 nav links whether the mobile menu is open or closed (D61)', () => {
+  it('keeps rendering all 8 nav links whether the mobile menu is open or closed (D61)', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     fixture.detectChanges();
@@ -73,6 +75,7 @@ describe('App', () => {
       '/transfers',
       '/templates',
       '/recurring',
+      '/budgets',
       '/workspace',
     ];
 
