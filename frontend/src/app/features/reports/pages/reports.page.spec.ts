@@ -182,11 +182,11 @@ describe('ReportsPage', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('[data-testid="reports-empty"]')).toBeTruthy();
-    expect(compiled.querySelector('[data-testid="reports-breakdown-placeholder"]')).toBeFalsy();
+    expect(compiled.querySelector('[data-testid="breakdown-chart"]')).toBeFalsy();
     httpMock.verify();
   });
 
-  it('shows the chart placeholder slots when there is activity', async () => {
+  it('renders both charts when there is activity', async () => {
     const { fixture, httpMock } = await createFixture({
       preset: 'this_month',
       currency: 'EUR',
@@ -201,8 +201,8 @@ describe('ReportsPage', () => {
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('[data-testid="reports-breakdown-placeholder"]')).toBeTruthy();
-    expect(compiled.querySelector('[data-testid="reports-trend-placeholder"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="breakdown-chart"]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid="trend-chart"]')).toBeTruthy();
     expect(compiled.querySelector('[data-testid="reports-empty"]')).toBeFalsy();
     httpMock.verify();
   });

@@ -1,0 +1,39 @@
+<svg
+  data-testid="trend-chart"
+  [attr.viewBox]="'0 0 ' + chartWidth + ' ' + chartHeight"
+  preserveAspectRatio="xMinYMin meet"
+  class="w-full"
+  role="img"
+>
+  @if (isLineChart()) {
+    @if (linePath(); as path) {
+      <path data-testid="trend-line" [attr.d]="path" class="fill-none stroke-primary" />
+    }
+    @for (point of linePoints(); track point.key) {
+      <circle
+        data-testid="trend-point"
+        [class.trend-point--partial]="point.partial"
+        [attr.data-partial]="point.partial"
+        [attr.cx]="point.x"
+        [attr.cy]="point.y"
+        r="3"
+        [attr.opacity]="point.partial ? 0.5 : 1"
+        class="fill-primary"
+      />
+    }
+  } @else {
+    @for (bar of bars(); track bar.key) {
+      <rect
+        data-testid="trend-bar"
+        [class.trend-bar--partial]="bar.partial"
+        [attr.data-partial]="bar.partial"
+        [attr.x]="bar.x"
+        [attr.y]="bar.y"
+        [attr.width]="bar.width"
+        [attr.height]="bar.height"
+        [attr.opacity]="bar.partial ? 0.5 : 1"
+        class="fill-primary"
+      />
+    }
+  }
+</svg>
