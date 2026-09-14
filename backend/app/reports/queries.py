@@ -92,6 +92,73 @@ def category_breakdown_totals(
     )
 
 
+def trend_totals(
+    scope: WorkspaceScope,
+    *,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    currency: str,
+    bucket: str,
+    type: str = "expense",
+    account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+) -> Select:
+    """Design D83's calendar-aligned bucketed query: `GROUP BY
+    date_trunc(:bucket, occurred_on)`. `bucket` MUST already be validated
+    against `day|week|month|year` by the caller (`service.resolve_bucket`)
+    — this function trusts it verbatim as the `date_trunc` field name.
+    Postgres `date_trunc('week', ...)` aligns to ISO Monday, matching
+    design D83's rationale exactly.
+
+    Mirrors `category_breakdown_totals`'s exact join shape (split-safe
+    SUM, `is_refund`-first `sa.case`, currency as an `ON` predicate) —
+    only the grouping key differs. Returns SPARSE rows (`bucket_start`,
+    `total`) for buckets that have at least one contributing transaction;
+    `service.dense_series()` fills the gaps (design D85).
+    """
+    txns = visible_transactions(
+        scope,
+        account_id=account_id,
+        category_id=category_id,
+        date_from=date_from,
+        date_to=date_to,
+    ).subquery()
+
+    signed_amount = sa.case(
+        (
+            sa.and_(Account.id.is_not(None), txns.c.is_refund.is_(True)),
+            -TransactionCategorySplit.amount,
+        ),
+        (
+            sa.and_(Account.id.is_not(None), txns.c.type == type),
+            TransactionCategorySplit.amount,
+        ),
+        else_=0,
+    )
+
+    bucket_start = sa.func.date_trunc(bucket, txns.c.occurred_on).label("bucket_start")
+
+    return (
+        sa.select(
+            bucket_start,
+            sa.func.coalesce(sa.func.sum(signed_amount), 0).label("total"),
+        )
+        .select_from(txns)
+        .join(
+            TransactionCategorySplit,
+            TransactionCategorySplit.transaction_id == txns.c.id,
+        )
+        .outerjoin(
+            Account,
+            sa.and_(
+                Account.id == txns.c.account_id,
+                Account.currency == currency,
+            ),
+        )
+        .group_by(bucket_start)
+    )
+
+
 def default_currency_counts(scope: WorkspaceScope) -> Select:
     """Design D86's exact query: `Account.currency` grouped by the count
     of transactions on that account, tie-broken by the earliest-created

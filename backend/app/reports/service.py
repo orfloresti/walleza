@@ -8,21 +8,38 @@ a competing query path (mirrors `app.budgets.service`'s exact structure).
 
 from __future__ import annotations
 
+import calendar
 import datetime
 import uuid
 from decimal import Decimal
+from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
 from app.categories.models import Category
 from app.categories.queries import visible_categories
 from app.deps import WorkspaceScope
-from app.reports.queries import category_breakdown_totals, default_currency_counts
+from app.reports.queries import (
+    category_breakdown_totals,
+    default_currency_counts,
+    trend_totals,
+)
+
+BUCKET_SIZES = ("day", "week", "month", "year")
 
 
 class ReportValidationError(Exception):
-    """Raised for an invalid date range (`date_from > date_to`). Mapped to
-    422 by the router."""
+    """Raised for an invalid date range (`date_from > date_to`) or an
+    unrecognized `bucket` value. Mapped to 422 by the router."""
+
+
+class TrendPoint(NamedTuple):
+    """One densified trend bucket (design D84/D85)."""
+
+    bucket_start: datetime.date
+    bucket_end: datetime.date
+    total: Decimal
+    partial: bool
 
 
 def roll_up(
@@ -115,6 +132,136 @@ def category_breakdown(
     return [
         (by_id[category_id], own, total) for category_id, (own, total) in rolled.items()
     ]
+
+
+def resolve_bucket(bucket: str) -> str:
+    """Validates `bucket` against `day|week|month|year` (design D88).
+    Raises `ReportValidationError` (422 at the router) otherwise."""
+    if bucket not in BUCKET_SIZES:
+        raise ReportValidationError(
+            f"bucket must be one of {BUCKET_SIZES!r}, got {bucket!r}"
+        )
+    return bucket
+
+
+def bucket_bounds(d: datetime.date, bucket: str) -> tuple[datetime.date, datetime.date]:
+    """Design D85: the calendar bucket `d` falls into, as `(start, end)`,
+    both inclusive — matching `visible_transactions`'s inclusive `<=` on
+    `date_to` (D85's own rationale).
+
+    Uses only `datetime`/`calendar` stdlib arithmetic (no hand-rolled day
+    counting), so DST transitions, leap years, and Dec->Jan rollovers are
+    handled by the interpreter's own calendar rules rather than reimplemented
+    here — dates carry no timezone/DST state at all (`datetime.date`, not
+    `datetime.datetime`), so DST is a non-issue for this function; it is
+    listed in the design/tasks as a boundary case to verify anyway.
+    """
+    if bucket == "day":
+        return d, d
+    if bucket == "week":
+        # ISO Monday-aligned, matching Postgres `date_trunc('week', ...)`.
+        start = d - datetime.timedelta(days=d.weekday())
+        end = start + datetime.timedelta(days=6)
+        return start, end
+    if bucket == "month":
+        start = d.replace(day=1)
+        last_day = calendar.monthrange(d.year, d.month)[1]
+        end = d.replace(day=last_day)
+        return start, end
+    if bucket == "year":
+        return d.replace(month=1, day=1), d.replace(month=12, day=31)
+    raise ReportValidationError(f"bucket must be one of {BUCKET_SIZES!r}, got {bucket!r}")
+
+
+def _next_bucket_start(d: datetime.date, bucket: str) -> datetime.date:
+    """The first date belonging to the NEXT calendar bucket after the one
+    containing `d`. Built on `bucket_bounds` + `datetime.timedelta`, plus
+    `calendar.monthrange` for month/year rollovers — never hand-rolled day
+    arithmetic that reimplements what those already solve correctly across
+    Dec->Jan and leap-year boundaries."""
+    _, end = bucket_bounds(d, bucket)
+    return end + datetime.timedelta(days=1)
+
+
+def dense_series(
+    rows: dict[datetime.date, Decimal],
+    *,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    bucket: str,
+) -> list[TrendPoint]:
+    """Design D85: walks every calendar bucket from `date_from` through
+    `date_to`, filling any bucket absent from `rows` with `Decimal("0")`
+    — a pure Python fold, table-testable across DST, leap years, and
+    Dec->Jan, with no gaps in the chart's x-domain.
+
+    `rows` maps a bucket's `bucket_start` date to its (already
+    range-clipped, per D84 — `visible_transactions` already filtered to
+    `date_from..date_to`) total. A bucket partially overlapping the
+    overall range at either edge is CLIPPED (already true of `rows`'
+    sums), KEPT, and flagged `partial=True` (design D84).
+    """
+    if date_from > date_to:
+        raise ReportValidationError("date_from must not be after date_to")
+
+    points: list[TrendPoint] = []
+    cursor = bucket_bounds(date_from, bucket)[0]
+    zero = Decimal(0)
+
+    while cursor <= date_to:
+        start, end = bucket_bounds(cursor, bucket)
+        partial = start < date_from or end > date_to
+        points.append(
+            TrendPoint(
+                bucket_start=start,
+                bucket_end=end,
+                total=rows.get(start, zero),
+                partial=partial,
+            )
+        )
+        cursor = _next_bucket_start(cursor, bucket)
+
+    return points
+
+
+def trend(
+    db: Session,
+    *,
+    scope: WorkspaceScope,
+    date_from: datetime.date,
+    date_to: datetime.date,
+    currency: str,
+    bucket: str,
+    type: str = "expense",
+    account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+) -> list[TrendPoint]:
+    """Orchestrates D83's bucketed SQL query + D85's Python densification.
+    `date_from > date_to` or an unrecognized `bucket` raises
+    `ReportValidationError` (422 at the router) before any query runs."""
+    if date_from > date_to:
+        raise ReportValidationError("date_from must not be after date_to")
+    bucket = resolve_bucket(bucket)
+
+    rows = {
+        row.bucket_start.date()
+        if isinstance(row.bucket_start, datetime.datetime)
+        else row.bucket_start: Decimal(row.total)
+        for row in db.execute(
+            trend_totals(
+                scope,
+                date_from=date_from,
+                date_to=date_to,
+                currency=currency,
+                bucket=bucket,
+                type=type,
+                account_id=account_id,
+                category_id=category_id,
+            )
+        )
+    }
+
+    return dense_series(rows, date_from=date_from, date_to=date_to, bucket=bucket)
 
 
 def default_currency(db: Session, *, scope: WorkspaceScope) -> str | None:
