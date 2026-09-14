@@ -5,7 +5,7 @@
     class="inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors"
     [class]="classes()"
   >
-    <ng-content />
+    <ng-container [ngTemplateOutlet]="content" />
   </a>
 } @else {
   <button
@@ -15,6 +15,8 @@
     class="inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none"
     [class]="classes()"
   >
-    <ng-content />
+    <ng-container [ngTemplateOutlet]="content" />
   </button>
 }
+
+<ng-template #content><ng-content /></ng-template>

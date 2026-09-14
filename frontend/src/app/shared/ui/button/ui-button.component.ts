@@ -1,4 +1,5 @@
 import { Component, computed, input } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
 import { FOCUS_RING } from '../ui-classes';
@@ -31,7 +32,7 @@ const SIZE_CLASSES: Record<UiButtonSize, string> = {
  */
 @Component({
   selector: 'ui-button',
-  imports: [RouterLink],
+  imports: [RouterLink, NgTemplateOutlet],
   templateUrl: './ui-button.component.html',
 })
 export class UiButtonComponent {
