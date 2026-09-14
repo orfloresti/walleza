@@ -1,15 +1,13 @@
-"""Pydantic request/response models for the `budget-management` capability
-(design's Interfaces/Contracts section). Progress fields
-(`BudgetWithProgress`/`BudgetProgress`) are unit 1b's responsibility — this
-unit (1a) only carries the CRUD shape.
+"""Pydantic request/response models for the `budget-management`/
+`budget-progress` capabilities (design's Interfaces/Contracts section).
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 
@@ -49,6 +47,28 @@ class BudgetCreateIn(BaseModel):
     # Design D66: plain ISO 4217 text, no lookup/enum table — mirrors
     # `app.accounts.models.Account.currency`'s CHECK exactly.
     currency: str = Field(pattern=r"^[A-Z]{3}$")
+
+
+class BudgetProgressOut(BaseModel):
+    """Current-month progress for one budget (design D71-D78). Never
+    persisted — computed live on every read from `visible_transactions`,
+    so this shape carries no `id`/timestamps of its own."""
+
+    limit: MoneyOut
+    spent: MoneyOut
+    remaining: MoneyOut
+    percent: float
+    status: Literal["on_track", "near_limit", "over_budget"]
+    period_start: date
+    period_end: date
+
+
+class BudgetWithProgressOut(BudgetOut):
+    """`BudgetOut` plus its current-month `progress` (design's
+    Interfaces/Contracts table: every budget route returns this shape, not
+    the bare CRUD `BudgetOut`)."""
+
+    progress: BudgetProgressOut
 
 
 class BudgetUpdateIn(BaseModel):
