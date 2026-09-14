@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, PlainSerializer
 
@@ -34,6 +34,25 @@ class CategoryBreakdownOut(BaseModel):
     date_from: date
     date_to: date
     slices: list[CategorySliceOut]
+
+
+class TrendPointOut(BaseModel):
+    """One densified bucket (design D84/D85). `partial=True` flags a
+    bucket that only partially overlaps the requested range so the
+    frontend can visually de-emphasise it (dashed/muted per D84)."""
+
+    bucket_start: date
+    bucket_end: date
+    partial: bool
+    total: MoneyOut
+
+
+class TrendOut(BaseModel):
+    currency: str
+    bucket: Literal["day", "week", "month", "year"]
+    date_from: date
+    date_to: date
+    points: list[TrendPointOut]
 
 
 class DefaultCurrencyOut(BaseModel):

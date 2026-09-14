@@ -59,6 +59,50 @@ def get_category_breakdown(
     )
 
 
+@router.get("/api/reports/trend", response_model=schemas.TrendOut)
+def get_trend(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    currency: str = Query(...),
+    bucket: str = Query(...),
+    type: str = Query("expense"),
+    account_id: uuid.UUID | None = Query(default=None),
+    category_id: uuid.UUID | None = Query(default=None),
+    scope: WorkspaceScope = Depends(require_membership),
+    db: Session = Depends(get_db),
+) -> schemas.TrendOut:
+    try:
+        points = service.trend(
+            db,
+            scope=scope,
+            date_from=date_from,
+            date_to=date_to,
+            currency=currency,
+            bucket=bucket,
+            type=type,
+            account_id=account_id,
+            category_id=category_id,
+        )
+    except service.ReportValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return schemas.TrendOut(
+        currency=currency,
+        bucket=bucket,  # type: ignore[arg-type]
+        date_from=date_from,
+        date_to=date_to,
+        points=[
+            schemas.TrendPointOut(
+                bucket_start=point.bucket_start,
+                bucket_end=point.bucket_end,
+                partial=point.partial,
+                total=point.total,
+            )
+            for point in points
+        ],
+    )
+
+
 @router.get("/api/reports/default-currency", response_model=schemas.DefaultCurrencyOut)
 def get_default_currency(
     scope: WorkspaceScope = Depends(require_membership),
