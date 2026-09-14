@@ -128,6 +128,7 @@ async def test_zero_activity_category_still_appears_at_zero(seed_user, app_facto
 
     async with AsyncClient(transport=transport, base_url="https://test") as client:
         await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        await _bootstrap_account(client, cookie)
         category_id = await _bootstrap_category(client, cookie, name="Unused")
 
         response = await client.get(
@@ -150,6 +151,7 @@ async def test_empty_date_range_still_returns_every_category(seed_user, app_fact
 
     async with AsyncClient(transport=transport, base_url="https://test") as client:
         await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        await _bootstrap_account(client, cookie)
         category_id = await _bootstrap_category(client, cookie)
 
         far_past = (TODAY - datetime.timedelta(days=3650)).isoformat()
@@ -279,6 +281,11 @@ async def test_non_matching_currency_contributes_zero(seed_user, app_factory) ->
     async with AsyncClient(transport=transport, base_url="https://test") as client:
         await client.get("/api/workspace", cookies={"walleza_access": cookie})
         eur_account_id = await _bootstrap_account(client, cookie, currency="EUR", name="Euro")
+        # A USD account must ALSO exist in the workspace: the currency
+        # validation (spec's "used by at least one account" rule) rejects
+        # any `currency` not matching some visible account before the
+        # per-category filter even runs.
+        await _bootstrap_account(client, cookie, currency="USD", name="Dollar")
         category_id = await _bootstrap_category(client, cookie)
 
         await _create_transaction(
@@ -312,6 +319,7 @@ async def test_parents_matching_spend_only_in_other_currency_child_is_zero(
     async with AsyncClient(transport=transport, base_url="https://test") as client:
         await client.get("/api/workspace", cookies={"walleza_access": cookie})
         eur_account_id = await _bootstrap_account(client, cookie, currency="EUR", name="Euro")
+        await _bootstrap_account(client, cookie, currency="USD", name="Dollar")
         parent = await _bootstrap_category(client, cookie, name="Parent")
         child = await _bootstrap_category(client, cookie, name="Child", parent_id=parent)
 
@@ -386,3 +394,58 @@ async def test_cross_workspace_access_denied(app_factory) -> None:
         )
 
     assert response.status_code == 403
+
+
+async def test_currency_not_used_by_any_account_returns_422(seed_user, app_factory) -> None:
+    """Spec `report-category-breakdown`'s "Validation and Workspace
+    Scoping" requirement: `currency` MUST match an ISO-4217 code used by
+    at least one account in the workspace, not merely be syntactically
+    valid ISO-4217 (design D82). An EUR-only workspace queried with a
+    syntactically valid but unused currency (GBP) must be rejected, not
+    silently answered with an all-zero breakdown."""
+    owner = seed_user(email="breakdown-unused-currency@example.com")
+    app = app_factory()
+    transport = ASGITransport(app=app)
+    cookie = _cookie_for(owner)
+
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        await _bootstrap_account(client, cookie, currency="EUR", name="Euro")
+
+        response = await client.get(
+            "/api/reports/category-breakdown",
+            params=_range_params(currency="GBP"),
+            cookies={"walleza_access": cookie},
+        )
+
+    assert response.status_code == 422
+
+
+async def test_currency_matching_real_account_still_works(seed_user, app_factory) -> None:
+    """Happy-path regression: a `currency` that matches a real account
+    continues to succeed exactly as before the validation was added."""
+    owner = seed_user(email="breakdown-currency-happy@example.com")
+    app = app_factory()
+    transport = ASGITransport(app=app)
+    cookie = _cookie_for(owner)
+
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        account_id = await _bootstrap_account(client, cookie, currency="USD")
+        category_id = await _bootstrap_category(client, cookie)
+
+        await _create_transaction(
+            client, cookie, account_id=account_id, amount="42.00",
+            occurred_on=TODAY.isoformat(),
+            splits=[{"category_id": category_id, "amount": "42.00"}],
+        )
+
+        response = await client.get(
+            "/api/reports/category-breakdown",
+            params=_range_params(currency="USD"),
+            cookies={"walleza_access": cookie},
+        )
+
+    assert response.status_code == 200
+    by_id = {s["category_id"]: s for s in response.json()["slices"]}
+    assert by_id[category_id]["own"] == "42.00"

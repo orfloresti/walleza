@@ -121,6 +121,7 @@ async def test_range_and_bucket_size_are_independent(seed_user, app_factory) -> 
 
     async with AsyncClient(transport=transport, base_url="https://test") as client:
         await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        await _bootstrap_account(client, cookie)
         date_from = TODAY - datetime.timedelta(days=90)
 
         response = await client.get(
@@ -409,6 +410,11 @@ async def test_non_matching_currency_contributes_zero_to_bucket(
     async with AsyncClient(transport=transport, base_url="https://test") as client:
         await client.get("/api/workspace", cookies={"walleza_access": cookie})
         eur_account_id = await _bootstrap_account(client, cookie, currency="EUR", name="Euro")
+        # A USD account must ALSO exist in the workspace: currency
+        # validation (spec's "used by at least one account" rule) rejects
+        # any `currency` not matching some visible account before the
+        # per-bucket filter even runs.
+        await _bootstrap_account(client, cookie, currency="USD", name="Dollar")
         category_id = await _bootstrap_category(client, cookie)
 
         await _create_transaction(
@@ -431,6 +437,69 @@ async def test_non_matching_currency_contributes_zero_to_bucket(
     assert response.status_code == 200
     points = response.json()["points"]
     assert points[0]["total"] == "0"
+
+
+async def test_currency_not_used_by_any_account_returns_422(seed_user, app_factory) -> None:
+    """Spec `report-trend`'s inherited currency rule (shared with
+    `report-category-breakdown`, design D82): `currency` MUST match an
+    ISO-4217 code used by at least one account in the workspace, rejected
+    with 422 even when syntactically valid but unused."""
+    owner = seed_user(email="trend-unused-currency@example.com")
+    app = app_factory()
+    transport = ASGITransport(app=app)
+    cookie = _cookie_for(owner)
+
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        await _bootstrap_account(client, cookie, currency="EUR", name="Euro")
+
+        response = await client.get(
+            "/api/reports/trend",
+            params={
+                "date_from": TODAY.isoformat(),
+                "date_to": TODAY.isoformat(),
+                "currency": "GBP",
+                "bucket": "day",
+            },
+            cookies={"walleza_access": cookie},
+        )
+
+    assert response.status_code == 422
+
+
+async def test_currency_matching_real_account_still_works(seed_user, app_factory) -> None:
+    """Happy-path regression: a `currency` that matches a real account
+    continues to succeed exactly as before the validation was added."""
+    owner = seed_user(email="trend-currency-happy@example.com")
+    app = app_factory()
+    transport = ASGITransport(app=app)
+    cookie = _cookie_for(owner)
+
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        await client.get("/api/workspace", cookies={"walleza_access": cookie})
+        account_id = await _bootstrap_account(client, cookie, currency="USD")
+        category_id = await _bootstrap_category(client, cookie)
+
+        await _create_transaction(
+            client, cookie, account_id=account_id, amount="12.00",
+            occurred_on=TODAY.isoformat(),
+            splits=[{"category_id": category_id, "amount": "12.00"}],
+        )
+
+        response = await client.get(
+            "/api/reports/trend",
+            params={
+                "date_from": TODAY.isoformat(),
+                "date_to": TODAY.isoformat(),
+                "currency": "USD",
+                "bucket": "day",
+            },
+            cookies={"walleza_access": cookie},
+        )
+
+    assert response.status_code == 200
+    points = response.json()["points"]
+    assert points[0]["total"] == "12.00"
 
 
 async def test_cross_workspace_access_denied(app_factory) -> None:
