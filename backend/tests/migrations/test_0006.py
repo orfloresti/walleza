@@ -145,6 +145,7 @@ _ALL_TABLES_AT_HEAD = {
     "budget",
     "platform_admin",
     "audit_log",
+    "transaction_ocr_extraction",
     "alembic_version",
 }
 

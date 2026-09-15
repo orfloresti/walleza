@@ -47,6 +47,14 @@ Only the ORM shape lives here; the CHECK constraints and FKs are declared
 for real in the hand-written `0003_categories_transactions.py` migration
 (design D11's precedent) — these classes exist so application code has a
 typed model to query against, not so Alembic can autogenerate from them.
+
+Phase 9 (Photo-Based Expense Capture / OCR) adds `ocr_status` (design
+D115), declared for real in `0012_ocr_drafts.py`. `OcrStatus` is a plain
+`StrEnum`, not a native Postgres enum type (design D93's precedent,
+mirrored by D115): the column is `Text` + CHECK. `NULL` means "an ordinary,
+non-draft transaction" — the vast majority of existing and future rows —
+so this column is additive and inert for every consumer that predates
+Phase 9.
 """
 
 from __future__ import annotations
@@ -54,6 +62,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from enum import StrEnum
 
 from sqlalchemy import (
     Boolean,
@@ -70,6 +79,18 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
 
+class OcrStatus(StrEnum):
+    """Design D115/D116 — transitions are enforced application-side via
+    conditional `UPDATE ... WHERE ocr_status = <expected>`, never a DB
+    trigger (design D116, D22's precedent). `CONFIRMED` is written only by
+    the confirm endpoint; no worker path ever writes it."""
+
+    PENDING_OCR = "pending_ocr"
+    EXTRACTED = "extracted"
+    EXTRACTION_FAILED = "extraction_failed"
+    CONFIRMED = "confirmed"
+
+
 class Transaction(Base):
     __tablename__ = "transaction"
     __table_args__ = (
@@ -78,6 +99,11 @@ class Transaction(Base):
         CheckConstraint(
             "(photo_content_type IS NULL) = (photo_uploaded_at IS NULL)",
             name="ck_transaction_photo_pair",
+        ),
+        CheckConstraint(
+            "ocr_status IS NULL OR ocr_status IN "
+            "('pending_ocr', 'extracted', 'extraction_failed', 'confirmed')",
+            name="ck_transaction_ocr_status",
         ),
     )
 
@@ -111,6 +137,9 @@ class Transaction(Base):
     )
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    # Design D115: NULL means "not a photo-capture draft" — the default for
+    # every pre-Phase-9 row and every manually-entered transaction.
+    ocr_status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TransactionCategorySplit(Base):
