@@ -143,6 +143,7 @@ _ALL_TABLES_AT_HEAD = {
     "recurring_transaction_split",
     "recurring_occurrence",
     "budget",
+    "platform_admin",
     "alembic_version",
 }
 
