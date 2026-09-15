@@ -513,17 +513,25 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
     from app.accounts.models import Account
     from app.categories.models import Category
     from app.transactions.models import Transaction, TransactionCategorySplit
-    from app.workspace.models import Workspace
 
     now = datetime.now(UTC)
     with Session(bind=migrated_db) as session:
-        workspace = Workspace(id=uuid.uuid4(), name="Test WS", created_at=now, updated_at=now)
-        session.add(workspace)
-        session.flush()
+        # Raw SQL, not the `Workspace` ORM class: Phase 8 design D106 added
+        # `is_active` to the live `Workspace` model (migration `0010`),
+        # which this module's deliberately 0003-pinned schema does not
+        # have — mirrors the fix in `test_0002.py`'s equivalent test.
+        workspace_id = uuid.uuid4()
+        session.execute(
+            sa.text(
+                "INSERT INTO app.workspace (id, name, created_at, updated_at) "
+                "VALUES (:id, 'Test WS', :created_at, :updated_at)"
+            ),
+            {"id": workspace_id, "created_at": now, "updated_at": now},
+        )
 
         account = Account(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             name="Checking",
             currency="USD",
             created_at=now,
@@ -534,7 +542,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 
         parent_category = Category(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             name="Food",
             type="expense",
             created_at=now,
@@ -545,7 +553,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 
         child_category = Category(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             parent_id=parent_category.id,
             name="Groceries",
             icon="cart",
@@ -558,7 +566,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 
         transaction = Transaction(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             account_id=account.id,
             type="expense",
             amount=Decimal("100.00"),

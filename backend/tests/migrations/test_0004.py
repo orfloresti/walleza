@@ -280,17 +280,25 @@ def test_orm_model_round_trips_via_session(migrated_db: sa.Engine) -> None:
 
     from app.accounts.models import Account
     from app.transfers.models import Transfer
-    from app.workspace.models import Workspace
 
     now = datetime.now(UTC)
     with Session(bind=migrated_db) as session:
-        workspace = Workspace(id=uuid.uuid4(), name="Test WS", created_at=now, updated_at=now)
-        session.add(workspace)
-        session.flush()
+        # Raw SQL, not the `Workspace` ORM class: Phase 8 design D106 added
+        # `is_active` to the live `Workspace` model (migration `0010`),
+        # which this module's deliberately 0004-pinned schema does not
+        # have — mirrors the fix in `test_0002.py`'s equivalent test.
+        workspace_id = uuid.uuid4()
+        session.execute(
+            sa.text(
+                "INSERT INTO app.workspace (id, name, created_at, updated_at) "
+                "VALUES (:id, 'Test WS', :created_at, :updated_at)"
+            ),
+            {"id": workspace_id, "created_at": now, "updated_at": now},
+        )
 
         from_account = Account(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             name="From",
             currency="USD",
             created_at=now,
@@ -298,7 +306,7 @@ def test_orm_model_round_trips_via_session(migrated_db: sa.Engine) -> None:
         )
         to_account = Account(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             name="To",
             currency="EUR",
             created_at=now,
@@ -309,7 +317,7 @@ def test_orm_model_round_trips_via_session(migrated_db: sa.Engine) -> None:
 
         transfer = Transfer(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             from_account_id=from_account.id,
             to_account_id=to_account.id,
             from_amount=Decimal("100.00"),

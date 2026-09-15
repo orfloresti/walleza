@@ -46,6 +46,11 @@ app_user_table = Table(
     Column("email", Text, nullable=False),
     Column("created_at", TIMESTAMP(timezone=True)),
     Column("updated_at", TIMESTAMP(timezone=True)),
+    # Phase 8 design D101, migration `0010`: NULL means active. Checked by
+    # login/refresh (Unit 4, not yet wired here) and read by
+    # `app.admin.service.deactivate_user`/`reactivate_user` (Unit 3) to set
+    # or clear it.
+    Column("deactivated_at", TIMESTAMP(timezone=True), nullable=True),
 )
 
 auth_session_table = Table(
@@ -201,6 +206,21 @@ def _revoke_family(db: Session, *, family_id: uuid.UUID) -> None:
     db.execute(
         sa.update(auth_session_table)
         .where(auth_session_table.c.family_id == family_id)
+        .where(auth_session_table.c.revoked_at.is_(None))
+        .values(revoked_at=_now())
+    )
+
+
+def revoke_all_sessions_for_user(db: Session, *, user_id: uuid.UUID) -> None:
+    """Phase 8 design D101 / Unit 3 task 3.4: revoke every live session for
+    `user_id` in one statement — used by `app.admin.service.deactivate_user`
+    so a still-valid access JWT cannot be refreshed past deactivation. Mirrors
+    `_revoke_family`'s shape but keys on `user_id`, not one family, since an
+    admin-initiated deactivation must end ALL of the user's sessions at once,
+    not just the one family a self-service logout would target."""
+    db.execute(
+        sa.update(auth_session_table)
+        .where(auth_session_table.c.user_id == user_id)
         .where(auth_session_table.c.revoked_at.is_(None))
         .values(revoked_at=_now())
     )
