@@ -167,6 +167,7 @@ export interface OcrExtraction {
  * yet. */
 export interface OcrStatusOut {
   ocr_status: OcrStatus;
+  account_id: string;
   extraction: OcrExtraction | null;
 }
 

@@ -408,7 +408,11 @@ def read_ocr_status(
             TransactionOcrExtraction.transaction_id == transaction.id
         )
     ).scalar_one_or_none()
-    return {"ocr_status": transaction.ocr_status, "extraction": extraction}
+    return {
+        "ocr_status": transaction.ocr_status,
+        "account_id": transaction.account_id,
+        "extraction": extraction,
+    }
 
 
 def confirm_from_photo(

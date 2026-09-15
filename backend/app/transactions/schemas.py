@@ -220,7 +220,12 @@ class OcrStatusOut(BaseModel):
     """Design D131: `GET /api/transactions/{id}/ocr` response. `extraction`
     is `null` while the transaction is still `pending_ocr` (the worker has
     not written a row yet) — the poller (design D132) reads `ocr_status`
-    alone to decide whether to keep polling."""
+    alone to decide whether to keep polling. `account_id` is the draft
+    transaction's own account (design D119 makes it required at draft-
+    creation time), exposed here so a client that lost its in-memory
+    hand-off state (e.g. a page refresh mid-review) can still recover which
+    account the draft belongs to instead of losing that selection."""
 
     ocr_status: Literal["pending_ocr", "extracted", "extraction_failed", "confirmed"]
+    account_id: uuid.UUID
     extraction: OcrExtractionOut | None

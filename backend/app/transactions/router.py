@@ -238,6 +238,7 @@ def read_ocr_status(
     extraction = payload["extraction"]
     return schemas.OcrStatusOut(
         ocr_status=payload["ocr_status"],
+        account_id=payload["account_id"],
         extraction=(
             schemas.OcrExtractionOut(
                 status=extraction.status,
