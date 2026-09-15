@@ -176,6 +176,13 @@ class Settings(BaseSettings):
     ocr_textract_region: str = Field(default="us-east-1")
     ocr_low_confidence_threshold: int = 80
 
+    # Phase 9 Unit 6 (design D124): the abandoned-draft TTL sweep run daily
+    # as Pass C in `app.scheduler`. A draft (any non-NULL, non-`confirmed`
+    # `ocr_status`) older than this many days with no confirmation is
+    # deleted — matching the codebase's existing 7-day idiom (`invite_ttl_days`
+    # above, and `s3.tf`'s multipart-upload abort window).
+    ocr_draft_ttl_days: int = 7
+
     @property
     def resolved_migrations_database_url(self) -> str:
         """The connection string Alembic must use to run DDL.

@@ -22,6 +22,14 @@ SEQUENTIALLY in the same invocation, each with its own independent
 per-recurrence commit boundary — never a shared transaction. Pass B
 deliberately runs AFTER Pass A so a recurrence caught up by Pass A is
 evaluated against its freshly-advanced `next_date`.
+
+Pass C (design D124, Phase 9 Unit 6) — the abandoned-draft TTL sweep —
+runs after Pass A and B, with its own commit boundary independent of
+either. It deletes photo-capture draft transactions nobody ever confirmed
+within `settings.ocr_draft_ttl_days` (default 7). Like Pass A/B, it is
+deliberately cross-workspace and scopeless (design's Data Flow) — see
+`app.ocr.cleanup`'s module docstring for the full rationale, including the
+S3-receipt-object cleanup decision.
 """
 
 from __future__ import annotations
@@ -31,6 +39,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.db import SessionLocal
+from app.ocr import cleanup as ocr_cleanup
 from app.recurring import generation
 
 
@@ -38,11 +47,18 @@ def handler(event: Any, context: Any) -> dict[str, dict[str, int]]:
     """Entry point invoked by the EventBridge rule (design D51). `event`
     and `context` are the AWS Lambda invocation arguments; neither is
     read, by design — see the module docstring and design's threat case
-    2. Returns `{"generation": ..., "reminders": ...}`, the two summary
-    dicts `generation.run`/`run_reminders` return, useful only for
+    2. Returns `{"generation": ..., "reminders": ..., "ocr_cleanup": ...}`,
+    the three summary dicts `generation.run`/`run_reminders`/
+    `ocr_cleanup.sweep_abandoned_drafts` return, useful only for
     CloudWatch log inspection, never consumed by any caller."""
-    today = datetime.now(UTC).date()
+    now = datetime.now(UTC)
+    today = now.date()
     with closing(SessionLocal()) as db:
         generation_counts = generation.run(db, today=today)
         reminder_counts = generation.run_reminders(db, today=today)
-    return {"generation": generation_counts, "reminders": reminder_counts}
+        ocr_cleanup_counts = ocr_cleanup.sweep_abandoned_drafts(db, now=now)
+    return {
+        "generation": generation_counts,
+        "reminders": reminder_counts,
+        "ocr_cleanup": ocr_cleanup_counts,
+    }
