@@ -44,6 +44,7 @@ from app.config import get_settings
 from app.deps import WorkspaceScope
 from app.transactions import schemas
 from app.transactions.models import OcrStatus, Transaction, TransactionCategorySplit
+from app.transactions.ocr_models import TransactionOcrExtraction
 from app.transactions.queries import (
     count_ocr_drafts_created_today,
     ocr_draft_transactions,
@@ -94,6 +95,19 @@ class OcrDailyLimitExceededError(Exception):
         self.limit = limit
         self.used = used
         self.resets_at = resets_at
+
+
+class OcrConfirmConflictError(Exception):
+    """Raised by `confirm_from_photo` when the conditional UPDATE (design
+    D116) finds the transaction's `ocr_status` is neither `extracted` nor
+    `extraction_failed` at the moment of confirm — either it was already
+    `confirmed` by a previous request, or the worker has not produced an
+    extraction yet (`pending_ocr`). Design D116 names exactly these two
+    source states as the valid transition-from states for confirm; a
+    `pending_ocr` draft has nothing to review yet and is deliberately NOT
+    confirmable directly — there is no "skip OCR, fill it in myself"
+    escape hatch (confirmed against design D116's WHERE clause, not
+    inferred). Mapped to 409 by the router."""
 
 
 class TransactionSplitValidationError(Exception):
@@ -375,6 +389,100 @@ def create_photo_draft(
         "max_bytes": settings.receipt_max_bytes,
         "content_type": content_type,
     }
+
+
+def read_ocr_status(
+    db: Session, *, scope: WorkspaceScope, transaction_id: uuid.UUID
+) -> dict[str, object]:
+    """Design D131: `GET /api/transactions/{id}/ocr`. Resolves the target
+    through `_get_transaction_or_draft`'s same union as the delete path —
+    `visible_transactions` first (a `confirmed` photo-derived transaction
+    must still answer, spec's "Confirmed Transaction Is Ordinary"), falling
+    back to `ocr_draft_transactions` for an in-progress draft that design
+    D120 made invisible through the default path. A transaction outside
+    both — another workspace's, or another member's personal account —
+    404s identically to every other read path."""
+    transaction = _get_transaction_or_draft(db, scope=scope, transaction_id=transaction_id)
+    extraction = db.execute(
+        sa.select(TransactionOcrExtraction).where(
+            TransactionOcrExtraction.transaction_id == transaction.id
+        )
+    ).scalar_one_or_none()
+    return {"ocr_status": transaction.ocr_status, "extraction": extraction}
+
+
+def confirm_from_photo(
+    db: Session,
+    *,
+    scope: WorkspaceScope,
+    transaction_id: uuid.UUID,
+    account_id: uuid.UUID,
+    type: str,
+    amount: Decimal,
+    occurred_on: datetime.date,
+    notes: str | None,
+    is_refund: bool,
+    checked: bool,
+    splits: list[schemas.SplitIn] | None,
+) -> Transaction:
+    """Design D131: `POST /api/transactions/{id}/confirm-from-photo`.
+    Accepts the SAME body shape `create_transaction` accepts, and reuses
+    its validators verbatim (`_validate_account_reference`,
+    `replace_splits`'s category/sum checks) — the only OCR-specific rule
+    added here is the mandatory, non-empty `splits` (spec's "Category
+    Always Manual": the endpoint MUST reject a confirm with no category,
+    and MUST NOT infer one from the extraction).
+
+    Resolves through `_get_transaction_or_draft` (same union as poll/
+    delete) so BOTH an in-progress draft (`extracted`/`extraction_failed`)
+    and — defensively — an already-`confirmed` row are found (the latter
+    is what makes the double-confirm case a clean 409 rather than a 404).
+
+    Design D116's conditional UPDATE (`WHERE ocr_status IN
+    ('extracted', 'extraction_failed')`) is the sole transition guard, and
+    it runs BEFORE any field is written: this is a deliberate judgment
+    call recorded in apply-progress — `pending_ocr` is NOT a valid source
+    state (no "skip OCR" escape hatch), matching D116's exact WHERE
+    clause, not the broader "any non-confirmed draft" reading. A
+    `rowcount == 0` result means the row was already `confirmed`, or is
+    still `pending_ocr` with nothing yet to review — both surface as the
+    same 409, since a caller cannot distinguish (nor needs to) which case
+    applies from outside."""
+    transaction = _get_transaction_or_draft(db, scope=scope, transaction_id=transaction_id)
+
+    _validate_account_reference(db, scope=scope, account_id=account_id)
+
+    if not splits:
+        raise TransactionValidationError(
+            "a category is required to confirm a photo-captured transaction"
+        )
+
+    result = db.execute(
+        sa.update(Transaction)
+        .where(Transaction.id == transaction.id)
+        .where(Transaction.workspace_id == scope.workspace_id)
+        .where(Transaction.ocr_status.in_([OcrStatus.EXTRACTED, OcrStatus.EXTRACTION_FAILED]))
+        .values(ocr_status=OcrStatus.CONFIRMED)
+    )
+    if result.rowcount == 0:
+        raise OcrConfirmConflictError(
+            "transaction is not in a confirmable OCR state (already confirmed, "
+            "or extraction has not completed yet)"
+        )
+
+    transaction.account_id = account_id
+    transaction.type = type
+    transaction.amount = amount
+    transaction.occurred_on = occurred_on
+    transaction.notes = notes
+    transaction.is_refund = is_refund
+    transaction.checked = checked
+    transaction.updated_at = _now()
+    transaction.ocr_status = OcrStatus.CONFIRMED
+
+    replace_splits(db, scope=scope, transaction=transaction, lines=splits)
+    db.flush()
+    return transaction
 
 
 def request_photo_upload_url(

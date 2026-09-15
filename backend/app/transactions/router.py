@@ -222,6 +222,74 @@ def create_photo_draft(
     return schemas.DraftFromPhotoOut(**payload)
 
 
+@router.get(
+    "/api/transactions/{transaction_id}/ocr",
+    response_model=schemas.OcrStatusOut,
+)
+def read_ocr_status(
+    transaction_id: uuid.UUID,
+    scope: WorkspaceScope = Depends(require_membership),
+    db: Session = Depends(get_db),
+) -> schemas.OcrStatusOut:
+    try:
+        payload = service.read_ocr_status(db, scope=scope, transaction_id=transaction_id)
+    except service.TransactionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="transaction not found") from exc
+    extraction = payload["extraction"]
+    return schemas.OcrStatusOut(
+        ocr_status=payload["ocr_status"],
+        extraction=(
+            schemas.OcrExtractionOut(
+                status=extraction.status,
+                failure_reason=extraction.failure_reason,
+                amount=extraction.extracted_amount,
+                occurred_on=extraction.extracted_occurred_on,
+                vendor_name=extraction.extracted_vendor_name,
+                currency=extraction.extracted_currency,
+                field_confidence=extraction.field_confidence,
+            )
+            if extraction is not None
+            else None
+        ),
+    )
+
+
+@router.post(
+    "/api/transactions/{transaction_id}/confirm-from-photo",
+    response_model=schemas.TransactionOut,
+)
+def confirm_from_photo(
+    transaction_id: uuid.UUID,
+    body: schemas.TransactionCreateIn,
+    scope: WorkspaceScope = Depends(require_membership),
+    db: Session = Depends(get_db),
+) -> schemas.TransactionOut:
+    try:
+        transaction = service.confirm_from_photo(
+            db,
+            scope=scope,
+            transaction_id=transaction_id,
+            account_id=body.account_id,
+            type=body.type,
+            amount=body.amount,
+            occurred_on=body.occurred_on,
+            notes=body.notes,
+            is_refund=body.is_refund,
+            checked=body.checked,
+            splits=body.splits,
+        )
+    except service.TransactionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="transaction not found") from exc
+    except service.TransactionValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.TransactionSplitValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.OcrConfirmConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.commit()
+    return _to_out(db, transaction)
+
+
 @router.post(
     "/api/transactions/{transaction_id}/photo/upload-url",
     response_model=schemas.PhotoUploadUrlOut,

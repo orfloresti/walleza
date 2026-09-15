@@ -194,3 +194,33 @@ class DraftFromPhotoOut(BaseModel):
     expires_at: datetime
     max_bytes: int
     content_type: PhotoContentType
+
+
+class OcrExtractionOut(BaseModel):
+    """Design D131's poll response shape for a `transaction_ocr_extraction`
+    row. `raw_response` is deliberately never exposed (design D117's
+    privacy rule) — only the typed fields Textract mapped, plus per-field
+    `field_confidence`. A key ABSENT from `field_confidence` means the
+    worker never returned that field at all (distinct from a low but
+    present confidence — the UI must treat the two differently, design
+    D134)."""
+
+    status: Literal["succeeded", "failed"]
+    failure_reason: (
+        Literal["provider_unavailable", "unreadable_document", "no_receipt_detected"] | None
+    )
+    amount: MoneyOut | None
+    occurred_on: date | None
+    vendor_name: str | None
+    currency: str | None
+    field_confidence: dict[str, float]
+
+
+class OcrStatusOut(BaseModel):
+    """Design D131: `GET /api/transactions/{id}/ocr` response. `extraction`
+    is `null` while the transaction is still `pending_ocr` (the worker has
+    not written a row yet) — the poller (design D132) reads `ocr_status`
+    alone to decide whether to keep polling."""
+
+    ocr_status: Literal["pending_ocr", "extracted", "extraction_failed", "confirmed"]
+    extraction: OcrExtractionOut | None
