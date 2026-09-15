@@ -80,6 +80,13 @@ class RefreshTokenReuseError(RefreshTokenError):
     has already been revoked."""
 
 
+class UserDeactivatedError(Exception):
+    """Phase 8 design D101 / Unit 4: raised when login or refresh is
+    attempted for a user whose `deactivated_at` is set. Distinct from
+    `RefreshTokenError` — a deactivated user's refresh token is otherwise
+    perfectly valid; it is the ACCOUNT, not the token, that is rejected."""
+
+
 @dataclass(frozen=True)
 class IssuedSession:
     access_token: str
@@ -139,9 +146,20 @@ def get_user_by_id(db: Session, *, user_id: str) -> dict[str, str] | None:
     return {"id": str(row.id), "email": row.email}
 
 
+def _is_deactivated(db: Session, *, user_id: uuid.UUID) -> bool:
+    row = db.execute(
+        sa.select(app_user_table.c.deactivated_at).where(app_user_table.c.id == user_id)
+    ).first()
+    return row is not None and row.deactivated_at is not None
+
+
 def create_session(db: Session, *, user_id: uuid.UUID) -> IssuedSession:
     """Start a brand-new session family (first login, or after a full
-    logout)."""
+    logout). Phase 8 design D101: rejects a deactivated user with
+    `UserDeactivatedError` before any session row is written — "deactivated
+    user cannot log in"."""
+    if _is_deactivated(db, user_id=user_id):
+        raise UserDeactivatedError("user is deactivated")
     settings = get_settings()
     family_id = uuid.uuid4()
     return _issue_new_refresh_row(
@@ -190,6 +208,16 @@ def rotate_refresh_token(db: Session, *, presented_refresh_token: str) -> Issued
 
     if row.expires_at is not None and row.expires_at < _now():
         raise RefreshTokenError("refresh token expired")
+
+    if _is_deactivated(db, user_id=row.user_id):
+        # Phase 8 design D101: an existing refresh token must be rejected
+        # once its owner is deactivated, even though the token itself is
+        # still unexpired and unrevoked. Deactivation's own bulk
+        # `revoke_all_sessions_for_user` call already handles the common
+        # case; this is the belt-and-suspenders check for a session issued
+        # after that bulk revocation ran but before the DB read below (or
+        # a future code path that forgets to call it).
+        raise UserDeactivatedError("user is deactivated")
 
     db.execute(
         sa.update(auth_session_table)

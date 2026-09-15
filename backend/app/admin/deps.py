@@ -18,6 +18,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.admin.models import PlatformAdmin
+from app.auth.session import app_user_table
 from app.db import get_db
 from app.deps import get_current_user
 from app.security import AccessTokenClaims
@@ -44,15 +45,16 @@ def require_platform_admin(
     very next call (mirrors `app.deps.require_owner`'s own re-resolution
     rule).
 
-    Deactivated-user enforcement (`app_user.deactivated_at`, design D101)
-    is deferred to Phase 8 Unit 4: that column does not exist yet at this
-    Unit. This dependency's shape (a single DB round trip keyed on
-    `user_id`) makes adding that predicate later a one-line change to the
-    WHERE clause, not a new dependency."""
+    Phase 8 design D101: also joins to `app_user.deactivated_at` and 403s
+    if the admin's own account is deactivated — a deactivated user must
+    not retain platform authority, even if their `platform_admin` row is
+    still present."""
     user_id = uuid.UUID(str(claims.sub))
     row = db.execute(
-        sa.select(PlatformAdmin.user_id).where(PlatformAdmin.user_id == user_id)
+        sa.select(PlatformAdmin.user_id, app_user_table.c.deactivated_at)
+        .join(app_user_table, app_user_table.c.id == PlatformAdmin.user_id)
+        .where(PlatformAdmin.user_id == user_id)
     ).first()
-    if row is None:
+    if row is None or row.deactivated_at is not None:
         raise HTTPException(status_code=403, detail="not a platform administrator")
     return PlatformAdminContext(user_id=user_id)
