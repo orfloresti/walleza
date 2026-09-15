@@ -26,7 +26,7 @@ from sqlalchemy.sql import Select
 
 from app.accounts.queries import visible_accounts
 from app.deps import WorkspaceScope
-from app.transactions.models import Transaction, TransactionCategorySplit
+from app.transactions.models import OcrStatus, Transaction, TransactionCategorySplit
 
 
 def visible_transactions(
@@ -53,6 +53,12 @@ def visible_transactions(
         sa.select(Transaction)
         .join(accounts, Transaction.account_id == accounts.c.id)
         .where(Transaction.workspace_id == scope.workspace_id)
+        .where(  # design D120: an OCR draft is not a real transaction yet
+            sa.or_(
+                Transaction.ocr_status.is_(None),
+                Transaction.ocr_status == OcrStatus.CONFIRMED,
+            )
+        )
     )
     if account_id is not None:
         query = query.where(Transaction.account_id == account_id)
@@ -72,3 +78,33 @@ def visible_transactions(
             )
         )
     return query
+
+
+def ocr_draft_transactions(scope: WorkspaceScope) -> Select:
+    """Design D120's deliberately narrow complement of
+    `visible_transactions`'s draft-exclusion predicate. Returns ONLY
+    in-progress OCR draft rows (`ocr_status` set and not yet
+    `confirmed`) — the exact opposite selection from the sanctioned
+    default path above.
+
+    There is no `include_drafts=` kwarg on `visible_transactions` on
+    purpose (design D120's rationale): a boolean flag would make the
+    dangerous "see everything" behavior reachable from the one path every
+    financial aggregate builds on. This function exists so that seeing a
+    draft always requires importing a differently-named, narrowly-scoped
+    helper — greppable and AST-checkable (see
+    `tests/transactions/test_draft_containment.py`) — rather than passing
+    an easy-to-mistype argument to the shared chokepoint.
+
+    Used only by the draft-lifecycle code paths (draft creation, poll,
+    confirm, and — critically — the `DELETE` endpoint, since a draft row
+    is no longer visible through `visible_transactions` once D120 lands,
+    but must still be resolvable so the user can discard it)."""
+    accounts = visible_accounts(scope).subquery()
+    return (
+        sa.select(Transaction)
+        .join(accounts, Transaction.account_id == accounts.c.id)
+        .where(Transaction.workspace_id == scope.workspace_id)
+        .where(Transaction.ocr_status.is_not(None))
+        .where(Transaction.ocr_status != OcrStatus.CONFIRMED)
+    )
