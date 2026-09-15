@@ -80,6 +80,28 @@ resource "aws_iam_role_policy_attachment" "scheduler_basic_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Abandoned-draft TTL sweep (design D124, `app/ocr/cleanup.py`'s Pass C):
+# after this function's own DB `DELETE` commits, it best-effort deletes the
+# now-orphaned receipt object from S3. Scoped to the same `workspaces/*`
+# prefix as every other S3 grant in this project — never the bare bucket
+# ARN, never `s3:ListBucket`, never `PutObject`/`GetObject` (this function
+# never reads or writes a receipt photo, only deletes an already-abandoned
+# one).
+data "aws_iam_policy_document" "scheduler_s3_receipts_delete" {
+  statement {
+    sid       = "DeleteAbandonedDraftReceipts"
+    effect    = "Allow"
+    actions   = ["s3:DeleteObject"]
+    resources = ["${aws_s3_bucket.receipts.arn}/workspaces/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "scheduler_s3_receipts_delete" {
+  name   = "s3-receipts-delete"
+  role   = aws_iam_role.scheduler_exec.id
+  policy = data.aws_iam_policy_document.scheduler_s3_receipts_delete.json
+}
+
 resource "aws_lambda_function" "scheduler" {
   function_name = local.scheduler_function_name
   role          = aws_iam_role.scheduler_exec.arn

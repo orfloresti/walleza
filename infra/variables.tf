@@ -96,6 +96,19 @@ variable "lambda_timeout_seconds" {
   default     = 15
 }
 
+variable "ocr_textract_region" {
+  description = <<-EOT
+    AWS region the OCR Lambda calls Textract's `AnalyzeExpense` in (design
+    D135, Open Questions). Textract's regional availability is narrower than
+    S3/Lambda; this lets the worker call a nearby supported region if
+    `var.aws_region` itself does not support `AnalyzeExpense`, without a
+    redesign — cross-region S3 access works for `AnalyzeExpense`'s
+    `S3Object` input within the same AWS partition, at a small latency cost.
+  EOT
+  type        = string
+  default     = "us-east-1"
+}
+
 variable "log_retention_days" {
   description = "CloudWatch Logs retention for the Lambda function's log group."
   type        = number
