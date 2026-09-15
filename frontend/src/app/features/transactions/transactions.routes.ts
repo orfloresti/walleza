@@ -10,13 +10,22 @@ import { Routes } from '@angular/router';
  * load the SAME `TransactionFormPage` (create vs. edit is determined by
  * whether an `id` route param is present, mirroring how a single page
  * covers both modes elsewhere in this codebase's precedent of one page
- * per concern).
+ * per concern). `scan` (Phase 9 design D133) is the photo-capture entry
+ * point; `:id/confirm` is deliberately NOT registered here yet — see
+ * `data/ocr-capture-handoff.service.ts`'s doc comment for why
+ * `ReceiptCapturePage` still navigates there and what Unit 9 (design
+ * D134) is expected to register at that same path.
  */
 export const routes: Routes = [
   {
     path: '',
     loadComponent: () =>
       import('./pages/transactions-list.page').then((m) => m.TransactionsListPage),
+  },
+  {
+    path: 'scan',
+    loadComponent: () =>
+      import('./pages/receipt-capture.page').then((m) => m.ReceiptCapturePage),
   },
   {
     path: 'new',

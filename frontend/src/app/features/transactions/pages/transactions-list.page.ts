@@ -65,6 +65,9 @@ import {
   template: `
     <section class="mx-auto w-full max-w-5xl px-4 py-6">
       <ui-page-header titleKey="transactions.title">
+        <ui-button testId="scan-receipt-entry" link="/transactions/scan" variant="secondary">
+          {{ 'transactions.scan.entry' | transloco }}
+        </ui-button>
         <ui-button link="/transactions/new" variant="primary">
           {{ 'transactions.create' | transloco }}
         </ui-button>

@@ -1,6 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, map, tap } from 'rxjs';
 
 /** Design decision 8: income|expense only, never transfer (P3's entity). */
 export type TransactionType = 'income' | 'expense';
@@ -128,6 +128,48 @@ export interface PhotoDownloadUrlOut {
   expires_at: string;
 }
 
+/** Design D131's `DraftFromPhotoOut` — the presigned-upload payload
+ * (identical shape to `PhotoUploadUrlOut`) plus the newly created draft
+ * transaction's id, so the caller can immediately upload and start
+ * polling `GET /api/transactions/{id}/ocr`. */
+export interface DraftFromPhotoOut {
+  transaction_id: string;
+  url: string;
+  fields: Record<string, string>;
+  expires_at: string;
+  max_bytes: number;
+  content_type: string;
+}
+
+/** Design D131's `ocr_status` value domain (design D115). `'pending_ocr'`
+ * is the only non-terminal value the poller (design D132) keeps waiting
+ * on. */
+export type OcrStatus = 'pending_ocr' | 'extracted' | 'extraction_failed' | 'confirmed';
+
+/** Design D131's `OcrExtractionOut` — `raw_response` is never exposed
+ * (design D117's privacy rule). A key ABSENT from `field_confidence`
+ * means the worker never returned that field at all (design D134 — the
+ * UI must treat this differently from a low but PRESENT confidence).
+ * `amount` is money, kept as a raw `string` end-to-end (design D19),
+ * never parsed into a JS number. */
+export interface OcrExtraction {
+  status: 'succeeded' | 'failed';
+  failure_reason: 'provider_unavailable' | 'unreadable_document' | 'no_receipt_detected' | null;
+  amount: string | null;
+  occurred_on: string | null;
+  vendor_name: string | null;
+  currency: string | null;
+  field_confidence: Record<string, number>;
+}
+
+/** `GET /api/transactions/{id}/ocr` response (design D131). `extraction`
+ * is `null` while still `pending_ocr` — the worker has not written a row
+ * yet. */
+export interface OcrStatusOut {
+  ocr_status: OcrStatus;
+  extraction: OcrExtraction | null;
+}
+
 export const TRANSACTIONS_ENDPOINT = '/api/transactions';
 
 /**
@@ -236,5 +278,49 @@ export class TransactionsService {
     return this.http.get<PhotoDownloadUrlOut>(`${TRANSACTIONS_ENDPOINT}/${transactionId}/photo`, {
       withCredentials: true,
     });
+  }
+
+  /** `POST /api/transactions/draft-from-photo` (design D119/D122/D131) —
+   * creates a placeholder draft transaction on `accountId` and returns a
+   * presigned upload payload in one call. A 429 (daily limit reached,
+   * design D123) or a 422 (validation) surfaces as an ordinary HTTP
+   * error for the caller to inspect. */
+  createPhotoDraft(accountId: string, contentType: string): Observable<DraftFromPhotoOut> {
+    return this.http.post<DraftFromPhotoOut>(
+      `${TRANSACTIONS_ENDPOINT}/draft-from-photo`,
+      { account_id: accountId, content_type: contentType },
+      { withCredentials: true },
+    );
+  }
+
+  /** `GET /api/transactions/{id}/ocr` (design D131) — the poll endpoint
+   * `receipt-capture.page.ts` calls every 2s (design D132). */
+  getOcrStatus(transactionId: string): Observable<OcrStatusOut> {
+    return this.http.get<OcrStatusOut>(`${TRANSACTIONS_ENDPOINT}/${transactionId}/ocr`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * The direct-to-S3 upload step (design D24 step ③, reused verbatim for
+   * the photo-first capture flow, design D131/D132) — builds a `FormData`
+   * from every `fields` entry in the EXACT order the server returned
+   * them, THEN the file itself appended last under the key `"file"` (S3's
+   * own documented presigned-POST requirement), and POSTs it DIRECTLY to
+   * `url` — a different origin, never `withCredentials`, since the
+   * signed policy itself is the authorization, not a session cookie.
+   * `ReceiptUploadComponent` keeps its own inline copy of this exact
+   * sequence for the existing attach-to-existing-transaction flow; this
+   * method is the one the NEW photo-first capture flow calls, so the two
+   * call sites share the identical field-ordering behavior without one
+   * importing UI internals from the other.
+   */
+  uploadToPresignedUrl(upload: { url: string; fields: Record<string, string> }, file: File): Observable<void> {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(upload.fields)) {
+      formData.append(key, value);
+    }
+    formData.append('file', file);
+    return this.http.post(upload.url, formData).pipe(map(() => undefined));
   }
 }
