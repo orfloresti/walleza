@@ -43,8 +43,12 @@ from app.categories.queries import visible_categories
 from app.config import get_settings
 from app.deps import WorkspaceScope
 from app.transactions import schemas
-from app.transactions.models import Transaction, TransactionCategorySplit
-from app.transactions.queries import ocr_draft_transactions, visible_transactions
+from app.transactions.models import OcrStatus, Transaction, TransactionCategorySplit
+from app.transactions.queries import (
+    count_ocr_drafts_created_today,
+    ocr_draft_transactions,
+    visible_transactions,
+)
 
 
 class TransactionNotFoundError(Exception):
@@ -76,6 +80,20 @@ class TransactionPhotoNotUploadedError(Exception):
     (both stay NULL, or keep their previous value on a re-confirm
     attempt), so the DB's `(photo_content_type IS NULL) =
     (photo_uploaded_at IS NULL)` CHECK constraint always still holds."""
+
+
+class OcrDailyLimitExceededError(Exception):
+    """Raised by `create_photo_draft` when the workspace has already
+    created `settings.ocr_daily_draft_limit` (or more) `ocr_status`-set
+    rows since UTC midnight today (design D122). Carries `limit`, `used`,
+    and `resets_at` so the router can build the 429 body/headers design
+    D123 specifies without a second query."""
+
+    def __init__(self, *, limit: int, used: int, resets_at: datetime.datetime) -> None:
+        super().__init__("daily photo-capture limit reached")
+        self.limit = limit
+        self.used = used
+        self.resets_at = resets_at
 
 
 class TransactionSplitValidationError(Exception):
@@ -285,6 +303,78 @@ def delete_transaction(
     transaction = _get_transaction_or_draft(db, scope=scope, transaction_id=transaction_id)
     db.delete(transaction)
     db.flush()
+
+
+def create_photo_draft(
+    db: Session, *, scope: WorkspaceScope, account_id: uuid.UUID, content_type: str
+) -> dict[str, object]:
+    """Design D119/D122/D123, Unit 3 task 3.1: creates an OCR draft
+    transaction and returns a presigned upload URL for its receipt key —
+    in that order, all inside the caller's own (uncommitted) session
+    transaction, so the rate-limit count and the draft insert below are
+    atomic against a concurrent request from the same workspace (design
+    D122's "same transaction" requirement: two concurrent requests cannot
+    both pass at `limit - 1`).
+
+    `account_id` is validated exactly like `create_transaction` (design
+    D119: rejected as if it did not exist for a foreign-workspace or
+    another member's personal account). The draft row is inserted with
+    `type='expense'`, `amount=Decimal("0.01")` (a placeholder — the CHECK
+    `amount > 0` is never relaxed, design D119's explicit rationale),
+    `occurred_on` = today (UTC), `notes=NULL`, zero splits (an
+    "uncategorized" transaction is already a legal shape, design D21 —
+    category is always assigned later by the user, never inferred by OCR,
+    per the design's hard scope boundary), and `ocr_status='pending_ocr'`.
+
+    The S3 object key (`storage.receipt_object_key`) is deterministic from
+    `(workspace_id, transaction_id)` alone (design D23), so it exists
+    logically the moment the row's `id` is chosen — the presigned upload
+    URL below is generated for that same key, mirroring
+    `request_photo_upload_url`'s own "resolve first, presign second"
+    ordering."""
+    _validate_account_reference(db, scope=scope, account_id=account_id)
+
+    settings = get_settings()
+    now = _now()
+    today_start = datetime.datetime.combine(now.date(), datetime.time.min, tzinfo=UTC)
+
+    used = db.execute(count_ocr_drafts_created_today(scope, since=today_start)).scalar_one()
+    if used >= settings.ocr_daily_draft_limit:
+        tomorrow_start = today_start + datetime.timedelta(days=1)
+        raise OcrDailyLimitExceededError(
+            limit=settings.ocr_daily_draft_limit,
+            used=used,
+            resets_at=tomorrow_start,
+        )
+
+    transaction = Transaction(
+        id=uuid.uuid4(),
+        workspace_id=scope.workspace_id,
+        account_id=account_id,
+        type="expense",
+        amount=Decimal("0.01"),
+        occurred_on=now.date(),
+        notes=None,
+        is_refund=False,
+        checked=False,
+        created_by_user_id=scope.user_id,
+        created_at=now,
+        updated_at=now,
+        ocr_status=OcrStatus.PENDING_OCR,
+    )
+    db.add(transaction)
+    db.flush()
+
+    key = storage.receipt_object_key(scope.workspace_id, transaction.id)
+    payload = storage.presigned_upload(key=key, content_type=content_type)
+    return {
+        "transaction_id": transaction.id,
+        "url": payload["url"],
+        "fields": payload["fields"],
+        "expires_at": now + datetime.timedelta(seconds=settings.presigned_url_ttl_seconds),
+        "max_bytes": settings.receipt_max_bytes,
+        "content_type": content_type,
+    }
 
 
 def request_photo_upload_url(

@@ -157,6 +157,13 @@ class Settings(BaseSettings):
     # exists in this sandbox.
     web_app_url: str = Field(default="http://localhost:4200")
 
+    # Phase 9 (Photo-Based Expense Capture / OCR) daily draft-creation cap
+    # (design D122/D123): counts EVERY `ocr_status`-set row created today
+    # per workspace, including failures — Textract is billed on the call,
+    # not on the outcome, so excluding failures would create a free-retry
+    # loop for a systematically-failing image.
+    ocr_daily_draft_limit: int = 20
+
     @property
     def resolved_migrations_database_url(self) -> str:
         """The connection string Alembic must use to run DDL.
