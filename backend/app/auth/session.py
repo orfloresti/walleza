@@ -153,6 +153,23 @@ def _is_deactivated(db: Session, *, user_id: uuid.UUID) -> bool:
     return row is not None and row.deactivated_at is not None
 
 
+def is_platform_admin(db: Session, *, user_id: str) -> bool:
+    """`GET /api/me` (Phase 8 Unit 7, design D110) surfaces this boolean so
+    the frontend knows whether to render the (unlinked, direct-URL-only)
+    `/admin` area at all. This is auth-flow metadata, not financial data
+    (O1 is unaffected), and it is purely a rendering hint — the real
+    authorization boundary stays `require_platform_admin`, re-resolved
+    from the database on every `/api/admin/*` request (design D98)."""
+    from app.admin.models import PlatformAdmin
+
+    row = db.execute(
+        sa.select(PlatformAdmin.user_id).where(
+            PlatformAdmin.user_id == uuid.UUID(str(user_id))
+        )
+    ).first()
+    return row is not None
+
+
 def create_session(db: Session, *, user_id: uuid.UUID) -> IssuedSession:
     """Start a brand-new session family (first login, or after a full
     logout). Phase 8 design D101: rejects a deactivated user with

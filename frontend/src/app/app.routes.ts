@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { authGuard } from './core/auth/auth.guard';
+import { adminGuard } from './features/admin/admin.guard';
 
 /**
  * First real routes (design D17) — the previously empty `app.routes.ts`
@@ -76,6 +77,20 @@ export const routes: Routes = [
     path: 'join/:token',
     canActivate: [authGuard],
     loadComponent: () => import('./features/workspace/pages/join.page').then((m) => m.JoinPage),
+  },
+  {
+    /**
+     * Phase 8 Unit 7 (design D110): the platform-admin area. Deliberately
+     * NOT listed in `app.html`'s main nav — reachable only by direct URL
+     * — and guarded by `adminGuard`, not the ordinary `authGuard`, since
+     * "authenticated" alone is not enough here; the caller must also be
+     * a platform admin (checked client-side as a rendering hint only,
+     * re-checked server-side by `require_platform_admin` on every
+     * `/api/admin/*` call).
+     */
+    path: 'admin',
+    canActivate: [adminGuard],
+    loadChildren: () => import('./features/admin/admin.routes').then((m) => m.routes),
   },
   { path: '**', redirectTo: '' },
 ];

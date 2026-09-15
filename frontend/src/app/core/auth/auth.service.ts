@@ -2,10 +2,16 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, catchError, map, of, shareReplay, tap } from 'rxjs';
 
-/** Shape of the `GET /api/me` 200 response (design Interfaces/Contracts). */
+/** Shape of the `GET /api/me` 200 response (design Interfaces/Contracts).
+ * `is_platform_admin` was added by Phase 8 Unit 7 (design D110) — a
+ * rendering hint only, never an authorization input. Forging it
+ * client-side yields an empty `/admin` shell and 403s, because the
+ * backend's `require_platform_admin` re-resolves from the database on
+ * every `/api/admin/*` request. */
 export interface AuthUser {
   id: string;
   email: string;
+  is_platform_admin: boolean;
 }
 
 /** `GET /api/me` -> 200 `{id,email}` | 401 (design Interfaces/Contracts). */

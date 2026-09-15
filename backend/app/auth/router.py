@@ -182,7 +182,7 @@ def me(
     response: Response,
     walleza_access: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
     if not walleza_access:
         response.status_code = 401
         return {"detail": "not authenticated"}
@@ -198,4 +198,8 @@ def me(
         response.status_code = 401
         return {"detail": "not authenticated"}
 
-    return {"id": user["id"], "email": user["email"]}
+    # Phase 8 Unit 7 (design D110): a rendering hint only, never an
+    # authorization input — see `auth_session.is_platform_admin` docstring.
+    is_platform_admin = auth_session.is_platform_admin(db, user_id=user["id"])
+
+    return {"id": user["id"], "email": user["email"], "is_platform_admin": is_platform_admin}
