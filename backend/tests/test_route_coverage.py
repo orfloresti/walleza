@@ -44,6 +44,13 @@ PR, has no REST contract at all per design).
 (tasks.md task 1a.6), same pattern once more: the new `app.budgets.router`
 is fully gated by `require_membership` just like every other router on
 this list.
+
+`/api/reports` was added to the prefix tuple here in Phase 8 PR0 (design
+D108, tasks.md Unit 0 task 0.1), closing a previously-live gap: the
+`app.reports.router` was already fully gated by `require_membership` in
+the actual route code, but this structural test never walked its prefix,
+so a future regression there would not have been caught. No change to
+the actual route code was needed — only to this test's coverage.
 """
 
 from __future__ import annotations
@@ -95,6 +102,7 @@ def test_every_workspace_and_accounts_route_requires_membership_except_bootstrap
                 "/api/templates",
                 "/api/recurring",
                 "/api/budgets",
+                "/api/reports",
             )
         ):
             continue
