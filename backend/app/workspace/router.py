@@ -28,6 +28,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.accounts import service as accounts_service
+from app.audit import queries as audit_queries
+from app.audit import schemas as audit_schemas
 from app.db import get_db
 from app.deps import WorkspaceScope, get_current_user, require_membership, require_owner
 from app.security import AccessTokenClaims
@@ -191,6 +193,33 @@ def remove_member(
     except service.MemberNotFoundError as exc:
         raise HTTPException(status_code=404, detail="member not found") from exc
     db.commit()
+
+
+@router.get("/api/workspace/audit", response_model=list[audit_schemas.AuditLogEntryOut])
+def get_workspace_audit_log(
+    scope: WorkspaceScope = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> list[audit_schemas.AuditLogEntryOut]:
+    """Owner-only (design D105) — rows where `workspace_id` equals the
+    caller's own workspace, INCLUDING platform-admin actions recorded
+    against it (spec audit-log domain's "Owner reads own workspace rows
+    only" / "Owner sees platform-admin action on own workspace"
+    scenarios, product decision O3)."""
+    rows = audit_queries.visible_audit_log(db, scope=scope)
+    return [
+        audit_schemas.AuditLogEntryOut(
+            id=row.id,
+            created_at=row.created_at,
+            actor_user_id=row.actor_user_id,
+            actor_was_platform_admin=row.actor_was_platform_admin,
+            action=row.action,
+            target_type=row.target_type,
+            target_id=row.target_id,
+            workspace_id=row.workspace_id,
+            metadata=row.metadata,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/api/workspace/summary", response_model=schemas.WorkspaceSummaryOut)

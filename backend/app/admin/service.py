@@ -23,6 +23,8 @@ from sqlalchemy.orm import Session
 
 from app.admin.deps import PlatformAdminContext
 from app.admin.models import PlatformAdmin
+from app.audit.actions import AuditAction
+from app.audit.service import record_audit
 from app.auth.session import app_user_table, revoke_all_sessions_for_user
 from app.workspace.models import Workspace
 
@@ -76,7 +78,15 @@ def deactivate_user(db: Session, *, admin: PlatformAdminContext, target_user_id:
         .values(deactivated_at=_now())
     )
     revoke_all_sessions_for_user(db, user_id=target_user_id)
-    # TODO(Unit 5): record_audit(action="platform.user_deactivated", ...)
+    record_audit(
+        db,
+        actor_user_id=admin.user_id,
+        actor_was_platform_admin=True,
+        action=AuditAction.PLATFORM_USER_DEACTIVATED,
+        target_type="user",
+        target_id=target_user_id,
+        workspace_id=None,
+    )
 
 
 def reactivate_user(db: Session, *, admin: PlatformAdminContext, target_user_id: uuid.UUID) -> None:
@@ -87,7 +97,15 @@ def reactivate_user(db: Session, *, admin: PlatformAdminContext, target_user_id:
         .where(app_user_table.c.id == target_user_id)
         .values(deactivated_at=None)
     )
-    # TODO(Unit 5): record_audit(action="platform.user_reactivated", ...)
+    record_audit(
+        db,
+        actor_user_id=admin.user_id,
+        actor_was_platform_admin=True,
+        action=AuditAction.PLATFORM_USER_REACTIVATED,
+        target_type="user",
+        target_id=target_user_id,
+        workspace_id=None,
+    )
 
 
 # --- workspace deactivation (design "Deactivate/Reactivate Workspace") -----
@@ -105,7 +123,15 @@ def deactivate_workspace(
         raise WorkspaceNotFoundError("no such workspace")
     workspace.is_active = False
     db.flush()
-    # TODO(Unit 5): record_audit(action="platform.workspace_deactivated", ...)
+    record_audit(
+        db,
+        actor_user_id=admin.user_id,
+        actor_was_platform_admin=True,
+        action=AuditAction.PLATFORM_WORKSPACE_DEACTIVATED,
+        target_type="workspace",
+        target_id=target_workspace_id,
+        workspace_id=target_workspace_id,
+    )
 
 
 def reactivate_workspace(
@@ -116,7 +142,15 @@ def reactivate_workspace(
         raise WorkspaceNotFoundError("no such workspace")
     workspace.is_active = True
     db.flush()
-    # TODO(Unit 5): record_audit(action="platform.workspace_reactivated", ...)
+    record_audit(
+        db,
+        actor_user_id=admin.user_id,
+        actor_was_platform_admin=True,
+        action=AuditAction.PLATFORM_WORKSPACE_REACTIVATED,
+        target_type="workspace",
+        target_id=target_workspace_id,
+        workspace_id=target_workspace_id,
+    )
 
 
 # --- grant/revoke admin (design "Grant and Revoke Admin", O6) --------------
@@ -137,7 +171,16 @@ def grant_admin(db: Session, *, admin: PlatformAdminContext, target_user_id: uui
         )
     )
     db.flush()
-    # TODO(Unit 5): record_audit(action="platform.admin_granted", ...)
+    record_audit(
+        db,
+        actor_user_id=admin.user_id,
+        actor_was_platform_admin=True,
+        action=AuditAction.PLATFORM_ADMIN_GRANTED,
+        target_type="user",
+        target_id=target_user_id,
+        workspace_id=None,
+        metadata={"granted_by_user_id": str(admin.user_id)},
+    )
 
 
 def revoke_admin(db: Session, *, admin: PlatformAdminContext, target_user_id: uuid.UUID) -> None:
@@ -153,5 +196,17 @@ def revoke_admin(db: Session, *, admin: PlatformAdminContext, target_user_id: uu
         raise NotAdminError("user is not a platform administrator")
     db.delete(existing)
     db.flush()
-    # TODO(Unit 5): record_audit(action="platform.admin_self_revoked" if
-    # target_user_id == admin.user_id else "platform.admin_revoked", ...)
+    action = (
+        AuditAction.PLATFORM_ADMIN_SELF_REVOKED
+        if target_user_id == admin.user_id
+        else AuditAction.PLATFORM_ADMIN_REVOKED
+    )
+    record_audit(
+        db,
+        actor_user_id=admin.user_id,
+        actor_was_platform_admin=True,
+        action=action,
+        target_type="user",
+        target_id=target_user_id,
+        workspace_id=None,
+    )
