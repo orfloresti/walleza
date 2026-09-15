@@ -281,7 +281,18 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
     declarative ORM models added in this PR) can be inserted and queried
     through a real SQLAlchemy `Session` against the tables `0002` creates —
     not just raw SQL through `sa.text`, as the other tests in this module
-    use for constraint probing."""
+    use for constraint probing.
+
+    `app/workspace/models.py` is a single, shared, CURRENT definition —
+    not versioned per migration — so a later phase that alters an
+    already-migrated table (Phase 8 design D93 added `role` to
+    `WorkspaceMember` in migration `0007`) makes the live ORM class no
+    longer insertable against THIS module's deliberately 0002-pinned
+    schema (see `migrated_db`'s docstring for why it stays pinned rather
+    than "head"). The membership row is therefore seeded via raw SQL
+    here, matching exactly `0002`'s own column set; `Workspace`,
+    `WorkspaceInvite`, and `Account` are untouched by any later phase and
+    still round-trip through the ORM as originally written."""
     import uuid
     from datetime import UTC, datetime
     from decimal import Decimal
@@ -289,7 +300,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
     from sqlalchemy.orm import Session
 
     from app.accounts.models import Account
-    from app.workspace.models import Workspace, WorkspaceInvite, WorkspaceMember
+    from app.workspace.models import Workspace, WorkspaceInvite
 
     now = datetime.now(UTC)
     with Session(bind=migrated_db) as session:
@@ -306,10 +317,15 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
             {"id": user_id},
         )
 
-        member = WorkspaceMember(
-            id=uuid.uuid4(), workspace_id=workspace.id, user_id=user_id, joined_at=now
+        # Raw SQL, not the `WorkspaceMember` ORM class — see this test's
+        # docstring above.
+        session.execute(
+            sa.text(
+                "INSERT INTO app.workspace_member (id, workspace_id, user_id, joined_at) "
+                "VALUES (gen_random_uuid(), :workspace_id, :user_id, :joined_at)"
+            ),
+            {"workspace_id": workspace.id, "user_id": user_id, "joined_at": now},
         )
-        session.add(member)
 
         invite = WorkspaceInvite(
             id=uuid.uuid4(),
@@ -342,7 +358,10 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
         assert fetched_account.initial_funds == Decimal("100.00")
         assert fetched_account.is_personal is True
 
-        fetched_member = session.query(WorkspaceMember).filter_by(workspace_id=workspace.id).one()
+        fetched_member = session.execute(
+            sa.text("SELECT user_id FROM app.workspace_member WHERE workspace_id = :workspace_id"),
+            {"workspace_id": workspace.id},
+        ).one()
         assert fetched_member.user_id == user_id
 
         fetched_invite = session.query(WorkspaceInvite).filter_by(workspace_id=workspace.id).one()

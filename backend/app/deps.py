@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.security import AccessTokenClaims, TokenError, verify_access_token
-from app.workspace.models import WorkspaceMember
+from app.workspace.models import WorkspaceMember, WorkspaceRole
 
 
 def get_current_user(walleza_access: str | None = Cookie(default=None)) -> AccessTokenClaims:
@@ -78,3 +78,25 @@ def require_membership(
     if row is None:
         raise HTTPException(status_code=403, detail="not a workspace member")
     return WorkspaceScope(user_id=user_id, workspace_id=row.workspace_id)
+
+
+def require_owner(
+    scope: WorkspaceScope = Depends(require_membership),
+    db: Session = Depends(get_db),
+) -> WorkspaceScope:
+    """Phase 8 design D96: layered ON TOP of `require_membership`, returning
+    the SAME, unmodified `WorkspaceScope` — never a new type. Keeping this
+    dependency inside `require_membership`'s closure means every
+    owner-gated route still satisfies `test_route_coverage.py`'s membership
+    assertion with zero changes to that test. Role is re-read from the DB
+    per request, never cached in the JWT, matching `require_membership`'s
+    own re-resolution rule."""
+    row = db.execute(
+        sa.select(WorkspaceMember.role).where(
+            WorkspaceMember.workspace_id == scope.workspace_id,
+            WorkspaceMember.user_id == scope.user_id,
+        )
+    ).first()
+    if row is None or row.role != WorkspaceRole.OWNER:
+        raise HTTPException(status_code=403, detail="workspace owner required")
+    return scope

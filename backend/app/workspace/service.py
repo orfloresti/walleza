@@ -24,7 +24,12 @@ from sqlalchemy.orm import Session
 from app.auth.session import app_user_table, get_user_by_id
 from app.config import get_settings
 from app.deps import WorkspaceScope
-from app.workspace.models import Workspace, WorkspaceInvite, WorkspaceMember
+from app.workspace.models import (
+    Workspace,
+    WorkspaceInvite,
+    WorkspaceMember,
+    WorkspaceRole,
+)
 
 
 class InviteRejectedError(Exception):
@@ -42,8 +47,25 @@ class WorkspaceConflictError(Exception):
 
 
 class MemberNotFoundError(Exception):
-    """Raised when the target of a member removal holds no
-    `workspace_member` row in the caller's own workspace -> 404."""
+    """Raised when the target of a member removal (or a transfer-ownership
+    target) holds no `workspace_member` row in the caller's own
+    workspace -> 404."""
+
+
+class SelfRemovalNotAllowedHereError(Exception):
+    """Phase 8 design D109: raised when `remove_member` (the owner-only,
+    other-member path) is called with `target_user_id == scope.user_id`.
+    Self-removal is a genuinely distinct authorization path
+    (`leave_workspace`, `DELETE /api/workspace/members/me`) -> 409."""
+
+
+class LastOwnerError(Exception):
+    """Phase 8 design D95: raised when removing/leaving would strip
+    workspace W of its sole owner while other members remain. The owner
+    must transfer ownership first -> 409. Does NOT fire when the owner is
+    the workspace's only member (solo-owner leave is allowed, matching
+    the existing solo-workspace behavior already defined for
+    workspace-membership)."""
 
 
 class InviteNotFoundError(Exception):
@@ -63,6 +85,7 @@ class MemberRow:
     user_id: uuid.UUID
     email: str
     joined_at: datetime
+    role: str
 
 
 def _now() -> datetime:
@@ -114,7 +137,20 @@ def get_or_create_workspace(db: Session, *, user_id: uuid.UUID) -> Workspace:
     db.add(workspace)
     try:
         db.flush()
-        db.add(WorkspaceMember(id=uuid.uuid4(), workspace_id=workspace.id, user_id=user_id, joined_at=now))
+        # Phase 8 design D93/D94: a brand-new workspace's creator is its
+        # owner from the start — explicit, not left to the column's
+        # safe-by-default `member` server_default (which exists precisely
+        # so every OTHER insert path, e.g. `accept_invite`, never
+        # accidentally grants ownership).
+        db.add(
+            WorkspaceMember(
+                id=uuid.uuid4(),
+                workspace_id=workspace.id,
+                user_id=user_id,
+                joined_at=now,
+                role=WorkspaceRole.OWNER.value,
+            )
+        )
         db.flush()
     except IntegrityError:
         db.rollback()
@@ -131,12 +167,20 @@ def get_or_create_workspace(db: Session, *, user_id: uuid.UUID) -> Workspace:
 
 def list_members(db: Session, *, workspace_id: uuid.UUID) -> list[MemberRow]:
     rows = db.execute(
-        sa.select(WorkspaceMember.user_id, app_user_table.c.email, WorkspaceMember.joined_at)
+        sa.select(
+            WorkspaceMember.user_id,
+            app_user_table.c.email,
+            WorkspaceMember.joined_at,
+            WorkspaceMember.role,
+        )
         .join(app_user_table, app_user_table.c.id == WorkspaceMember.user_id)
         .where(WorkspaceMember.workspace_id == workspace_id)
         .order_by(WorkspaceMember.joined_at)
     ).all()
-    return [MemberRow(user_id=row.user_id, email=row.email, joined_at=row.joined_at) for row in rows]
+    return [
+        MemberRow(user_id=row.user_id, email=row.email, joined_at=row.joined_at, role=row.role)
+        for row in rows
+    ]
 
 
 def rename_workspace(db: Session, *, scope: WorkspaceScope, name: str) -> Workspace:
@@ -257,10 +301,25 @@ def accept_invite(db: Session, *, scope: WorkspaceScope, raw_token: str) -> None
 
 
 def remove_member(db: Session, *, scope: WorkspaceScope, target_user_id: uuid.UUID) -> None:
-    """Deletes ONLY the `workspace_member` row. Never touches `account`
-    rows: a removed member's personal accounts stay exactly where they
-    are, retained and simply unreachable through `visible_accounts` from
-    then on (decision 4 / design D15)."""
+    """Owner-only path for removing SOMEONE ELSE (design D109) — the
+    caller is proven to be the owner by `app.deps.require_owner` before
+    this function ever runs. Deletes ONLY the `workspace_member` row.
+    Never touches `account` rows: a removed member's personal accounts
+    stay exactly where they are, retained and simply unreachable through
+    `visible_accounts` from then on (decision 4 / design D15).
+
+    Self-removal is a genuinely distinct code path
+    (`leave_workspace`/`DELETE /api/workspace/members/me`, design D109's
+    "Self-Removal Is a Distinct Path" requirement) — rejected here with
+    409 rather than silently handled, so the caller is redirected to the
+    correct endpoint. Because the caller is always the sole owner and
+    `target_user_id != scope.user_id` is enforced below, `target_user_id`
+    can never itself be the owner, so no last-owner check is needed here
+    (single-owner invariant, O4)."""
+    if target_user_id == scope.user_id:
+        raise SelfRemovalNotAllowedHereError(
+            "use DELETE /api/workspace/members/me to remove yourself"
+        )
     result = db.execute(
         sa.delete(WorkspaceMember).where(
             WorkspaceMember.workspace_id == scope.workspace_id,
@@ -269,3 +328,85 @@ def remove_member(db: Session, *, scope: WorkspaceScope, target_user_id: uuid.UU
     )
     if result.rowcount == 0:
         raise MemberNotFoundError("member not found in this workspace")
+
+
+def leave_workspace(db: Session, *, scope: WorkspaceScope) -> None:
+    """Self-removal path (design D109), open to ANY member — not gated by
+    `require_owner`. Design D95: the sole owner of a workspace with other
+    members remaining MUST transfer ownership first (`LastOwnerError` ->
+    409); a sole owner who is also the workspace's only member may leave
+    (nothing is orphaned — this deletes the `Workspace` row along with the
+    `workspace_member` row, mirroring `accept_invite`'s existing
+    solo+empty-workspace deletion pattern)."""
+    row = db.execute(
+        sa.select(WorkspaceMember.role).where(
+            WorkspaceMember.workspace_id == scope.workspace_id,
+            WorkspaceMember.user_id == scope.user_id,
+        )
+    ).first()
+    if row is None:
+        raise MemberNotFoundError("member not found in this workspace")
+
+    is_sole_owner = row.role == WorkspaceRole.OWNER
+    if is_sole_owner:
+        other_members = db.execute(
+            sa.select(sa.func.count())
+            .select_from(WorkspaceMember)
+            .where(
+                WorkspaceMember.workspace_id == scope.workspace_id,
+                WorkspaceMember.user_id != scope.user_id,
+            )
+        ).scalar_one()
+        if other_members > 0:
+            raise LastOwnerError(
+                "the sole owner cannot leave while other members remain; "
+                "transfer ownership first"
+            )
+
+    db.execute(
+        sa.delete(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == scope.workspace_id,
+            WorkspaceMember.user_id == scope.user_id,
+        )
+    )
+    if is_sole_owner:
+        db.flush()
+        db.execute(sa.delete(Workspace).where(Workspace.id == scope.workspace_id))
+        db.flush()
+
+
+def transfer_ownership(db: Session, *, scope: WorkspaceScope, new_owner_user_id: uuid.UUID) -> None:
+    """Owner-only (design D95/D96 — caller proven owner by
+    `app.deps.require_owner`). Atomic demote-self + promote-target in one
+    flush: `new_owner_user_id` MUST already be a member of the caller's
+    workspace (`MemberNotFoundError` -> 404 otherwise). A no-op transfer
+    to oneself is a harmless idempotent success."""
+    if new_owner_user_id == scope.user_id:
+        return
+
+    target = db.execute(
+        sa.select(WorkspaceMember.id).where(
+            WorkspaceMember.workspace_id == scope.workspace_id,
+            WorkspaceMember.user_id == new_owner_user_id,
+        )
+    ).first()
+    if target is None:
+        raise MemberNotFoundError("target user is not a member of this workspace")
+
+    db.execute(
+        sa.update(WorkspaceMember)
+        .where(
+            WorkspaceMember.workspace_id == scope.workspace_id,
+            WorkspaceMember.user_id == scope.user_id,
+        )
+        .values(role=WorkspaceRole.MEMBER.value)
+    )
+    db.execute(
+        sa.update(WorkspaceMember)
+        .where(
+            WorkspaceMember.workspace_id == scope.workspace_id,
+            WorkspaceMember.user_id == new_owner_user_id,
+        )
+        .values(role=WorkspaceRole.OWNER.value)
+    )
+    db.flush()
