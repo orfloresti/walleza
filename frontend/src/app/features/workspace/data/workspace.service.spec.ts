@@ -42,7 +42,15 @@ describe('WorkspaceService', () => {
     req.flush({
       id: 'ws-1',
       name: "user@example.com's workspace",
-      members: [{ user_id: 'user-1', email: 'user@example.com', joined_at: '2026-01-01T00:00:00Z' }],
+      members: [
+        {
+          user_id: 'user-1',
+          email: 'user@example.com',
+          joined_at: '2026-01-01T00:00:00Z',
+          role: 'owner',
+        },
+      ],
+      your_role: 'owner',
     });
 
     const workspace = await promise;
@@ -82,5 +90,53 @@ describe('WorkspaceService', () => {
     req.flush(null, { status: 204, statusText: 'No Content' });
 
     await promise;
+  });
+
+  it('DELETE /api/workspace/members/me calls the self-removal endpoint (Phase 8 design D109)', async () => {
+    const promise = firstValueFrom(service.leaveWorkspace());
+
+    const req = httpMock.expectOne('/api/workspace/members/me');
+    expect(req.request.method).toBe('DELETE');
+    expect(req.request.withCredentials).toBe(true);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+
+    await promise;
+  });
+
+  it('POST /api/workspace/transfer-ownership sends the target user id (Phase 8 design D95/D109)', async () => {
+    const promise = firstValueFrom(service.transferOwnership('user-2'));
+
+    const req = httpMock.expectOne('/api/workspace/transfer-ownership');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ new_owner_user_id: 'user-2' });
+    expect(req.request.withCredentials).toBe(true);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+
+    await promise;
+  });
+
+  it('GET /api/workspace/audit resolves the owner-only audit trail (Phase 8 design D105)', async () => {
+    const promise = firstValueFrom(service.getAuditLog());
+
+    const req = httpMock.expectOne('/api/workspace/audit');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.withCredentials).toBe(true);
+    req.flush([
+      {
+        id: 'audit-1',
+        created_at: '2026-01-03T00:00:00Z',
+        actor_user_id: 'user-1',
+        actor_was_platform_admin: false,
+        action: 'workspace.renamed',
+        target_type: 'workspace',
+        target_id: 'ws-1',
+        workspace_id: 'ws-1',
+        metadata: {},
+      },
+    ]);
+
+    const entries = await promise;
+    expect(entries).toHaveLength(1);
+    expect(entries[0].action).toBe('workspace.renamed');
   });
 });
