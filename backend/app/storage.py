@@ -28,6 +28,7 @@ arguments passed to it.
 
 from __future__ import annotations
 
+import re
 import uuid
 
 import boto3
@@ -49,6 +50,14 @@ _s3_client = boto3.client(
 )
 
 
+# Design D126: the exact inverse of `receipt_object_key` below. Anchored
+# (`^...$`, no prefix/suffix smuggling); `uuid.UUID(...)` is the real
+# validator, not the regex's coarse `[0-9a-f-]{36}` character class.
+_RECEIPT_KEY_RE = re.compile(
+    r"^workspaces/([0-9a-f-]{36})/transactions/([0-9a-f-]{36})/receipt$"
+)
+
+
 def receipt_object_key(workspace_id: uuid.UUID, transaction_id: uuid.UUID) -> str:
     """Design D23: fully deterministic — a pure function of two uuid4s, no
     persistence, no key column on the `transaction` row. Two uuid4s in the
@@ -57,6 +66,28 @@ def receipt_object_key(workspace_id: uuid.UUID, transaction_id: uuid.UUID) -> st
     re-upload targets this SAME key, overwriting in place — there is no
     per-replacement orphan to clean up."""
     return f"workspaces/{workspace_id}/transactions/{transaction_id}/receipt"
+
+
+def parse_receipt_object_key(key: str) -> tuple[uuid.UUID, uuid.UUID] | None:
+    """Design D126: the OCR worker's (`app/ocr_worker.py`) sole trust
+    boundary on an S3 event's `Records[].s3.object.key`. A non-matching or
+    malformed key is IGNORED, never guessed at and never logged with its
+    contents — returns `None` rather than raising, so a crafted or
+    unrelated key (path traversal, extra path segments, a non-uuid
+    segment, wrong casing, a trailing slash) is simply skipped by the
+    caller.
+
+    Kept adjacent to `receipt_object_key` above so the object-key format
+    has exactly one definition site in each direction (design D126's
+    rationale) — the worker imports this function rather than
+    reimplementing the shape."""
+    match = _RECEIPT_KEY_RE.match(key)
+    if match is None:
+        return None
+    try:
+        return uuid.UUID(match.group(1)), uuid.UUID(match.group(2))
+    except ValueError:
+        return None
 
 
 def presigned_upload(*, key: str, content_type: str) -> dict[str, object]:
@@ -116,6 +147,20 @@ def object_exists(*, key: str) -> bool:
     except ClientError:
         return False
     return True
+
+
+def object_content_type(*, key: str) -> str | None:
+    """A `head_object` call returning the object's stored `ContentType` —
+    used by the OCR worker (`app.ocr.extraction.process`, design D127 step
+    4) to learn the receipt's content type from S3 itself, since a
+    presigned-POST-uploaded object's S3 event notification carries no
+    content-type field of its own. `None` on any `ClientError` (object not
+    found, or otherwise), mirroring `object_exists`'s same treatment."""
+    try:
+        response = _s3_client.head_object(Bucket=_settings.s3_receipts_bucket, Key=key)
+    except ClientError:
+        return None
+    return response.get("ContentType")
 
 
 def delete_object(*, key: str) -> None:
