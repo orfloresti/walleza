@@ -116,7 +116,13 @@ def callback(
     user_id = auth_session.upsert_user_by_google_sub(
         db, google_sub=identity.google_sub, email=identity.email
     )
-    issued = auth_session.create_session(db, user_id=user_id)
+    try:
+        issued = auth_session.create_session(db, user_id=user_id)
+    except auth_session.UserDeactivatedError:
+        db.commit()
+        error_response = Response(status_code=401)
+        error_response.delete_cookie(PKCE_STATE_COOKIE, path=PKCE_STATE_COOKIE_PATH)
+        return error_response
     db.commit()
 
     response = RedirectResponse(url="/", status_code=302)
@@ -138,10 +144,10 @@ def refresh(
 
     try:
         issued = auth_session.rotate_refresh_token(db, presented_refresh_token=walleza_refresh)
-    except auth_session.RefreshTokenError:
+    except (auth_session.RefreshTokenError, auth_session.UserDeactivatedError):
         # A reuse-detected rotation already revoked the family in the DB
         # (`rotate_refresh_token`'s side effect); persist that before
-        # responding regardless of which `RefreshTokenError` was raised.
+        # responding regardless of which error was raised.
         db.commit()
         _clear_session_cookies(response)
         response.status_code = 401

@@ -32,12 +32,14 @@ import uuid
 from dataclasses import dataclass
 
 import sqlalchemy as sa
-from fastapi import Cookie, Depends, HTTPException
+from fastapi import Cookie, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.security import AccessTokenClaims, TokenError, verify_access_token
-from app.workspace.models import WorkspaceMember, WorkspaceRole
+from app.workspace.models import Workspace, WorkspaceMember, WorkspaceRole
+
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 def get_current_user(walleza_access: str | None = Cookie(default=None)) -> AccessTokenClaims:
@@ -62,6 +64,7 @@ class WorkspaceScope:
 
 
 def require_membership(
+    request: Request,
     claims: AccessTokenClaims = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> WorkspaceScope:
@@ -70,13 +73,25 @@ def require_membership(
     outside a visibility predicate (`app.accounts.queries.visible_accounts`
     in PR3); "not a member of anything (yet)" is a distinct case, handled
     here, and every non-bootstrap workspace/accounts endpoint depends on
-    it (enforced by `backend/tests/test_route_coverage.py`)."""
+    it (enforced by `backend/tests/test_route_coverage.py`).
+
+    Phase 8 design D106: also enforces the read-only lockout on a
+    deactivated workspace. The membership lookup is joined to
+    `workspace.is_active`; a non-GET/HEAD/OPTIONS request against an
+    inactive workspace is rejected with 403 before it reaches any
+    service/mutation code. `WorkspaceScope` itself is returned unchanged
+    (no new field), so every downstream signature and `require_owner`
+    (D96) keep composing exactly as before."""
     user_id = uuid.UUID(str(claims.sub))
     row = db.execute(
-        sa.select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user_id)
+        sa.select(WorkspaceMember.workspace_id, Workspace.is_active)
+        .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
+        .where(WorkspaceMember.user_id == user_id)
     ).first()
     if row is None:
         raise HTTPException(status_code=403, detail="not a workspace member")
+    if not row.is_active and request.method not in _SAFE_METHODS:
+        raise HTTPException(status_code=403, detail="workspace is deactivated")
     return WorkspaceScope(user_id=user_id, workspace_id=row.workspace_id)
 
 
