@@ -150,7 +150,15 @@
       "proceedManually": "Continue manually",
       "draftError": "Could not start scanning that receipt. Please try again.",
       "uploadError": "Could not upload that photo. Please try again.",
-      "pollError": "Something went wrong while reading your receipt. Please try again."
+      "pollError": "Something went wrong while reading your receipt. Please try again.",
+      "confirmTitle": "Confirm receipt details",
+      "confirmLoading": "Loading receipt details…",
+      "confirmSubmit": "Confirm",
+      "confirmError": "Could not confirm that transaction. Please try again.",
+      "confirmConflictError": "This receipt was already confirmed or is no longer available.",
+      "extractionFailedBody": "We couldn't read this receipt automatically. Enter the details yourself — your photo is already attached.",
+      "stillProcessing": "We're still reading your receipt. You can wait a moment and refresh, or continue and enter the details yourself.",
+      "lowConfidence": "check this"
     }
   },
   "transfers": {

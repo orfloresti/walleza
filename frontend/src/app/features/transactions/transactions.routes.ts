@@ -11,10 +11,11 @@ import { Routes } from '@angular/router';
  * whether an `id` route param is present, mirroring how a single page
  * covers both modes elsewhere in this codebase's precedent of one page
  * per concern). `scan` (Phase 9 design D133) is the photo-capture entry
- * point; `:id/confirm` is deliberately NOT registered here yet — see
- * `data/ocr-capture-handoff.service.ts`'s doc comment for why
- * `ReceiptCapturePage` still navigates there and what Unit 9 (design
- * D134) is expected to register at that same path.
+ * point; `:id/confirm` (Phase 9, Unit 9, design D134) is the confirm/
+ * review screen `ReceiptCapturePage` already navigates to on every one
+ * of its exits (terminal `ocr_status` or the 90s timeout) — see
+ * `data/ocr-capture-handoff.service.ts`'s doc comment for the exact
+ * hand-off contract `ReceiptConfirmPage` consumes.
  */
 export const routes: Routes = [
   {
@@ -26,6 +27,11 @@ export const routes: Routes = [
     path: 'scan',
     loadComponent: () =>
       import('./pages/receipt-capture.page').then((m) => m.ReceiptCapturePage),
+  },
+  {
+    path: ':id/confirm',
+    loadComponent: () =>
+      import('./pages/receipt-confirm.page').then((m) => m.ReceiptConfirmPage),
   },
   {
     path: 'new',
