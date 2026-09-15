@@ -294,5 +294,55 @@
       "title": "No activity in this range",
       "body": "There is no transaction activity for the selected date range and currency."
     }
+  },
+  "admin": {
+    "nav": {
+      "users": "Users",
+      "workspaces": "Workspaces",
+      "audit": "Audit log"
+    },
+    "dashboard": {
+      "title": "Admin overview",
+      "loading": "Loading platform stats…",
+      "loadError": "Could not load platform stats. Please try again.",
+      "totalUsers": "Total users",
+      "totalWorkspaces": "Total workspaces",
+      "totalPlatformAdmins": "Platform admins",
+      "deactivatedUsers": "Deactivated users",
+      "deactivatedWorkspaces": "Deactivated workspaces"
+    },
+    "users": {
+      "title": "Users",
+      "loading": "Loading users…",
+      "loadError": "Could not load users. Please try again.",
+      "empty": "No users yet.",
+      "deactivatedBadge": "Deactivated",
+      "platformAdminBadge": "Platform admin",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "grantAdmin": "Grant admin",
+      "revokeAdmin": "Revoke admin",
+      "deactivateError": "Could not deactivate that user. Please try again.",
+      "reactivateError": "Could not reactivate that user. Please try again.",
+      "grantAdminError": "Could not grant platform-admin access. Please try again.",
+      "revokeAdminError": "Could not revoke platform-admin access. Please try again."
+    },
+    "workspaces": {
+      "title": "Workspaces",
+      "loading": "Loading workspaces…",
+      "loadError": "Could not load workspaces. Please try again.",
+      "empty": "No workspaces yet.",
+      "deactivatedBadge": "Deactivated",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "deactivateError": "Could not deactivate that workspace. Please try again.",
+      "reactivateError": "Could not reactivate that workspace. Please try again."
+    },
+    "audit": {
+      "title": "Platform audit log",
+      "loading": "Loading audit log…",
+      "loadError": "Could not load the audit log. Please try again.",
+      "empty": "No audit events yet."
+    }
   }
 }

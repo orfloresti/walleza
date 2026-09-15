@@ -294,5 +294,55 @@
       "title": "Sin actividad en este rango",
       "body": "No hay actividad de transacciones para el rango de fechas y la moneda seleccionados."
     }
+  },
+  "admin": {
+    "nav": {
+      "users": "Usuarios",
+      "workspaces": "Espacios de trabajo",
+      "audit": "Registro de auditoría"
+    },
+    "dashboard": {
+      "title": "Resumen de administración",
+      "loading": "Cargando estadísticas de la plataforma…",
+      "loadError": "No se pudieron cargar las estadísticas de la plataforma. Inténtalo de nuevo.",
+      "totalUsers": "Usuarios totales",
+      "totalWorkspaces": "Espacios de trabajo totales",
+      "totalPlatformAdmins": "Administradores de la plataforma",
+      "deactivatedUsers": "Usuarios desactivados",
+      "deactivatedWorkspaces": "Espacios de trabajo desactivados"
+    },
+    "users": {
+      "title": "Usuarios",
+      "loading": "Cargando usuarios…",
+      "loadError": "No se pudieron cargar los usuarios. Inténtalo de nuevo.",
+      "empty": "Aún no hay usuarios.",
+      "deactivatedBadge": "Desactivado",
+      "platformAdminBadge": "Administrador de la plataforma",
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "grantAdmin": "Otorgar administrador",
+      "revokeAdmin": "Revocar administrador",
+      "deactivateError": "No se pudo desactivar a ese usuario. Inténtalo de nuevo.",
+      "reactivateError": "No se pudo reactivar a ese usuario. Inténtalo de nuevo.",
+      "grantAdminError": "No se pudo otorgar acceso de administrador de la plataforma. Inténtalo de nuevo.",
+      "revokeAdminError": "No se pudo revocar el acceso de administrador de la plataforma. Inténtalo de nuevo."
+    },
+    "workspaces": {
+      "title": "Espacios de trabajo",
+      "loading": "Cargando espacios de trabajo…",
+      "loadError": "No se pudieron cargar los espacios de trabajo. Inténtalo de nuevo.",
+      "empty": "Aún no hay espacios de trabajo.",
+      "deactivatedBadge": "Desactivado",
+      "deactivate": "Desactivar",
+      "reactivate": "Reactivar",
+      "deactivateError": "No se pudo desactivar ese espacio de trabajo. Inténtalo de nuevo.",
+      "reactivateError": "No se pudo reactivar ese espacio de trabajo. Inténtalo de nuevo."
+    },
+    "audit": {
+      "title": "Registro de auditoría de la plataforma",
+      "loading": "Cargando el registro de auditoría…",
+      "loadError": "No se pudo cargar el registro de auditoría. Inténtalo de nuevo.",
+      "empty": "Aún no hay eventos de auditoría."
+    }
   }
 }

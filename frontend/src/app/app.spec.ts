@@ -64,6 +64,18 @@ describe('App', () => {
     ]);
   });
 
+  it('does not link to the platform-admin area from the main nav (Phase 8 Unit 7, design D110)', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const hrefs = Array.from(compiled.querySelectorAll('nav a')).map((a) =>
+      a.getAttribute('href'),
+    );
+
+    expect(hrefs).toHaveLength(9);
+    expect(hrefs).not.toContain('/admin');
+  });
+
   it('keeps rendering all 9 nav links whether the mobile menu is open or closed (D61)', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
