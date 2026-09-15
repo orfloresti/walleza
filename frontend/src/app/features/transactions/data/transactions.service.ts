@@ -301,6 +301,20 @@ export class TransactionsService {
     });
   }
 
+  /** `POST /api/transactions/{id}/confirm-from-photo` (design D131/D134,
+   * Phase 9 Unit 9) — the SAME body shape as `POST /api/transactions`
+   * (`create_transaction`'s validators, reused verbatim server-side).
+   * 409 when the draft is not in `extracted`/`extraction_failed`
+   * (already confirmed, or a `pending_ocr` skip-OCR attempt — Unit 4's
+   * conditional-UPDATE guard); 422 on ordinary validation failure. */
+  confirmFromPhoto(transactionId: string, body: TransactionCreate): Observable<Transaction> {
+    return this.http.post<Transaction>(
+      `${TRANSACTIONS_ENDPOINT}/${transactionId}/confirm-from-photo`,
+      body,
+      { withCredentials: true },
+    );
+  }
+
   /**
    * The direct-to-S3 upload step (design D24 step ③, reused verbatim for
    * the photo-first capture flow, design D131/D132) — builds a `FormData`
