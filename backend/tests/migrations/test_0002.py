@@ -300,13 +300,23 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
     from sqlalchemy.orm import Session
 
     from app.accounts.models import Account
-    from app.workspace.models import Workspace, WorkspaceInvite
+    from app.workspace.models import WorkspaceInvite
 
     now = datetime.now(UTC)
     with Session(bind=migrated_db) as session:
-        workspace = Workspace(id=uuid.uuid4(), name="Test WS", created_at=now, updated_at=now)
-        session.add(workspace)
-        session.flush()
+        # Raw SQL, not the `Workspace` ORM class: Phase 8 design D106 added
+        # `is_active` to the live `Workspace` model (migration `0010`),
+        # which this module's deliberately 0002-pinned schema does not
+        # have — same reasoning as the `WorkspaceMember` raw-SQL insert
+        # below, already documented in this test's docstring.
+        workspace_id = uuid.uuid4()
+        session.execute(
+            sa.text(
+                "INSERT INTO app.workspace (id, name, created_at, updated_at) "
+                "VALUES (:id, 'Test WS', :created_at, :updated_at)"
+            ),
+            {"id": workspace_id, "created_at": now, "updated_at": now},
+        )
 
         user_id = uuid.uuid4()
         session.execute(
@@ -324,12 +334,12 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
                 "INSERT INTO app.workspace_member (id, workspace_id, user_id, joined_at) "
                 "VALUES (gen_random_uuid(), :workspace_id, :user_id, :joined_at)"
             ),
-            {"workspace_id": workspace.id, "user_id": user_id, "joined_at": now},
+            {"workspace_id": workspace_id, "user_id": user_id, "joined_at": now},
         )
 
         invite = WorkspaceInvite(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             created_by_user_id=user_id,
             token_hash="orm-test-hash",
             expires_at=now,
@@ -339,7 +349,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 
         account = Account(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             owner_user_id=user_id,
             name="Personal",
             currency="USD",
@@ -353,18 +363,18 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
         session.add(account)
         session.commit()
 
-        fetched_account = session.query(Account).filter_by(workspace_id=workspace.id).one()
+        fetched_account = session.query(Account).filter_by(workspace_id=workspace_id).one()
         assert fetched_account.currency == "USD"
         assert fetched_account.initial_funds == Decimal("100.00")
         assert fetched_account.is_personal is True
 
         fetched_member = session.execute(
             sa.text("SELECT user_id FROM app.workspace_member WHERE workspace_id = :workspace_id"),
-            {"workspace_id": workspace.id},
+            {"workspace_id": workspace_id},
         ).one()
         assert fetched_member.user_id == user_id
 
-        fetched_invite = session.query(WorkspaceInvite).filter_by(workspace_id=workspace.id).one()
+        fetched_invite = session.query(WorkspaceInvite).filter_by(workspace_id=workspace_id).one()
         assert fetched_invite.token_hash == "orm-test-hash"
 
 

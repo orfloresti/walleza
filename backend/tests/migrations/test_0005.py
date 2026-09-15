@@ -714,7 +714,6 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
     from app.categories.models import Category
     from app.recurring.models import RecurringTransaction, RecurringTransactionSplit
     from app.templates.models import TransactionTemplate, TransactionTemplateSplit
-    from app.workspace.models import Workspace
 
     now = datetime.now(UTC)
     with Session(bind=migrated_db) as session:
@@ -727,13 +726,22 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
             {"id": user_id, "sub": f"sub-{user_id}", "email": f"{user_id}@example.com"},
         )
 
-        workspace = Workspace(id=uuid.uuid4(), name="Test WS", created_at=now, updated_at=now)
-        session.add(workspace)
-        session.flush()
+        # Raw SQL, not the `Workspace` ORM class: Phase 8 design D106 added
+        # `is_active` to the live `Workspace` model (migration `0010`),
+        # which this module's deliberately 0005-pinned schema does not
+        # have — mirrors the fix in `test_0002.py`'s equivalent test.
+        workspace_id = uuid.uuid4()
+        session.execute(
+            sa.text(
+                "INSERT INTO app.workspace (id, name, created_at, updated_at) "
+                "VALUES (:id, 'Test WS', :created_at, :updated_at)"
+            ),
+            {"id": workspace_id, "created_at": now, "updated_at": now},
+        )
 
         account = Account(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             name="Checking",
             currency="USD",
             created_at=now,
@@ -744,7 +752,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 
         category = Category(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             name="Rent",
             type="expense",
             created_at=now,
@@ -755,7 +763,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 
         template = TransactionTemplate(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             account_id=account.id,
             name="Monthly Rent",
             position=1,
@@ -778,7 +786,7 @@ def test_orm_models_round_trip_via_session(migrated_db: sa.Engine) -> None:
 
         recurring = RecurringTransaction(
             id=uuid.uuid4(),
-            workspace_id=workspace.id,
+            workspace_id=workspace_id,
             account_id=account.id,
             type="expense",
             amount=Decimal("50.00"),

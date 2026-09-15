@@ -49,6 +49,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
+import sqlalchemy as sa
 from sqlalchemy import ForeignKey, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -78,6 +79,13 @@ class Workspace(Base):
     )
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    # Phase 8 design D106, migration `0010`: read-only lockout flag, written
+    # by `app.admin.service.deactivate_workspace`/`reactivate_workspace`
+    # (Unit 3). The actual lockout ENFORCEMENT (`require_membership`
+    # rejecting non-GET/HEAD/OPTIONS when False) is Unit 4 — this column is
+    # inert here, `server_default=true` so every existing/new row starts
+    # active.
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.true())
 
 
 class WorkspaceMember(Base):
