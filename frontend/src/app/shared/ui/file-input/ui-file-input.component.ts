@@ -16,6 +16,12 @@ export class UiFileInputComponent {
   readonly accept = input<string | null>(null);
   readonly disabled = input(false);
   readonly testId = input<string | null>(null);
+  /** Phase 9 addition (design D133): `"environment"`/`"user"` forwards
+   * to the native `capture` attribute so mobile browsers open the camera
+   * directly rather than a generic file picker. `null` (the default)
+   * omits the attribute entirely, preserving every existing caller's
+   * generic-picker behavior unchanged. */
+  readonly capture = input<string | null>(null);
   readonly fileSelected = output<File | null>();
 
   protected onChange(event: Event): void {

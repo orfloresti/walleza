@@ -139,6 +139,18 @@
       "label": "Receipt photo",
       "uploading": "Uploading…",
       "uploadError": "Could not upload that photo. Please try again."
+    },
+    "scan": {
+      "entry": "Scan receipt",
+      "pageTitle": "Scan a receipt",
+      "submit": "Scan",
+      "uploading": "Uploading your receipt…",
+      "polling": "Reading your receipt… this usually takes a few seconds",
+      "timeoutBody": "We couldn't finish reading your receipt in time. You can continue and enter the details yourself — your photo is already attached.",
+      "proceedManually": "Continue manually",
+      "draftError": "Could not start scanning that receipt. Please try again.",
+      "uploadError": "Could not upload that photo. Please try again.",
+      "pollError": "Something went wrong while reading your receipt. Please try again."
     }
   },
   "transfers": {

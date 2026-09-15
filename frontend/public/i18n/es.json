@@ -139,6 +139,18 @@
       "label": "Foto del recibo",
       "uploading": "Subiendo…",
       "uploadError": "No se pudo subir esa foto. Inténtalo de nuevo."
+    },
+    "scan": {
+      "entry": "Escanear recibo",
+      "pageTitle": "Escanear un recibo",
+      "submit": "Escanear",
+      "uploading": "Subiendo tu recibo…",
+      "polling": "Leyendo tu recibo… esto suele tardar unos segundos",
+      "timeoutBody": "No pudimos terminar de leer tu recibo a tiempo. Puedes continuar e ingresar los datos manualmente — tu foto ya está adjunta.",
+      "proceedManually": "Continuar manualmente",
+      "draftError": "No se pudo iniciar el escaneo de ese recibo. Inténtalo de nuevo.",
+      "uploadError": "No se pudo subir esa foto. Inténtalo de nuevo.",
+      "pollError": "Ocurrió un error al leer tu recibo. Inténtalo de nuevo."
     }
   },
   "transfers": {

@@ -245,4 +245,77 @@ describe('TransactionsService', () => {
     const result = await promise;
     expect(result).toEqual(downloadResponse);
   });
+
+  // Phase 9, Unit 8 (design D131/D132) — photo-first capture flow.
+
+  it('POST /api/transactions/draft-from-photo creates a draft + presigned upload payload (task focus)', async () => {
+    const draftResponse = {
+      transaction_id: 'txn-draft-1',
+      url: 'https://walleza-receipts-staging.s3.amazonaws.com/',
+      fields: { key: 'workspaces/ws-1/transactions/txn-draft-1/receipt' },
+      expires_at: '2026-01-01T00:05:00Z',
+      max_bytes: 5242880,
+      content_type: 'image/jpeg',
+    };
+    const promise = firstValueFrom(service.createPhotoDraft('acc-1', 'image/jpeg'));
+
+    const req = httpMock.expectOne('/api/transactions/draft-from-photo');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ account_id: 'acc-1', content_type: 'image/jpeg' });
+    expect(req.request.withCredentials).toBe(true);
+    req.flush(draftResponse);
+
+    const result = await promise;
+    expect(result).toEqual(draftResponse);
+  });
+
+  it('GET /api/transactions/{id}/ocr polls the extraction status (task focus)', async () => {
+    const ocrResponse = {
+      ocr_status: 'extracted',
+      extraction: {
+        status: 'succeeded',
+        failure_reason: null,
+        amount: '12.34',
+        occurred_on: '2026-01-15',
+        vendor_name: 'Coffee Shop',
+        currency: 'USD',
+        field_confidence: { amount: 98.2 },
+      },
+    };
+    const promise = firstValueFrom(service.getOcrStatus('txn-draft-1'));
+
+    const req = httpMock.expectOne('/api/transactions/txn-draft-1/ocr');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.withCredentials).toBe(true);
+    req.flush(ocrResponse);
+
+    const result = await promise;
+    expect(result).toEqual(ocrResponse);
+    // Money stays a raw string end-to-end (design D19), never coerced.
+    expect(typeof result.extraction?.amount).toBe('string');
+  });
+
+  it('uploadToPresignedUrl POSTs a FormData with every field before the file, direct to the given url', async () => {
+    const file = new File(['fake-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+    const promise = firstValueFrom(
+      service.uploadToPresignedUrl(
+        { url: 'https://walleza-receipts-staging.s3.amazonaws.com/', fields: { key: 'k', policy: 'p' } },
+        file,
+      ),
+    );
+
+    const req = httpMock.expectOne('https://walleza-receipts-staging.s3.amazonaws.com/');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.withCredentials).toBe(false);
+
+    const entries = Array.from((req.request.body as FormData).entries());
+    expect(entries).toEqual([
+      ['key', 'k'],
+      ['policy', 'p'],
+      ['file', file],
+    ]);
+    req.flush(null);
+
+    await promise;
+  });
 });
