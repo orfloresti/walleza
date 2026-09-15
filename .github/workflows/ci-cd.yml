@@ -103,6 +103,44 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+  infra-ci:
+    name: Infra fmt/validate + notification-safety check
+    runs-on: ubuntu-latest
+    # Read-only, credential-free checks (design D136) — no `terraform plan`
+    # or `apply` here, since those require real AWS credentials against
+    # live state and are explicitly out of scope for CI (Unit 7 apply is a
+    # manual, human-run step).
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        working-directory: infra
+        run: terraform fmt -check -diff
+
+      - name: terraform validate
+        working-directory: infra
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Assert exactly one aws_s3_bucket_notification for the receipts bucket
+        # Design D136: `aws_s3_bucket_notification` is authoritative for a
+        # bucket's ENTIRE notification config. A second resource targeting
+        # `aws_s3_bucket.receipts` would silently clobber the first on every
+        # apply — this grep is the structural guard against that ever being
+        # added by mistake.
+        run: |
+          set -euo pipefail
+          COUNT=$(grep -rc 'resource "aws_s3_bucket_notification"' infra/*.tf | awk -F: '{sum+=$2} END {print sum}')
+          if [ "$COUNT" -ne 1 ]; then
+            echo "Expected exactly one aws_s3_bucket_notification resource for the receipts bucket, found $COUNT" >&2
+            exit 1
+          fi
+
   deploy:
     name: Deploy
     needs: [backend-ci, frontend-ci]
@@ -198,11 +236,14 @@ jobs:
           cd package && zip -r -q ../lambda.zip . -x '*.pyc' -x '__pycache__/*'
 
       - name: Update Lambda function code
-        # Both the HTTP function and the scheduler function (design D45,
-        # `infra/scheduler.tf`) ship from the SAME zip built above, in this
-        # SAME step — `set -euo pipefail` means either both updates succeed
-        # or the step fails before either `wait` call returns, so the two
-        # functions never drift to code from different commits.
+        # The HTTP function, the scheduler function (design D45,
+        # `infra/scheduler.tf`), and the OCR worker function (design D135,
+        # `infra/ocr.tf`) all ship from the SAME zip built above, in this
+        # SAME step — `set -euo pipefail` means either all three updates
+        # succeed or the step fails before any later `wait` call returns, so
+        # the three functions never drift to code from different commits.
+        # Missing this OCR update means `walleza-ocr-<env>` would silently
+        # run the first-apply placeholder zip forever (design D135).
         run: |
           set -euo pipefail
           FUNCTION_NAME="walleza-backend-${WALLEZA_ENVIRONMENT}"
@@ -218,6 +259,13 @@ jobs:
             --zip-file "fileb://backend/lambda.zip" \
             --publish
           aws lambda wait function-updated --function-name "$SCHEDULER_FUNCTION_NAME"
+
+          OCR_FUNCTION_NAME="walleza-ocr-${WALLEZA_ENVIRONMENT}"
+          aws lambda update-function-code \
+            --function-name "$OCR_FUNCTION_NAME" \
+            --zip-file "fileb://backend/lambda.zip" \
+            --publish
+          aws lambda wait function-updated --function-name "$OCR_FUNCTION_NAME"
 
       - name: Record deployed version/commit
         # Merge-only update: `update-function-configuration --environment`
