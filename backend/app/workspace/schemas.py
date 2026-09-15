@@ -21,16 +21,27 @@ class MemberOut(BaseModel):
     user_id: uuid.UUID
     email: str
     joined_at: datetime
+    role: str
 
 
 class WorkspaceOut(BaseModel):
     id: uuid.UUID
     name: str
     members: list[MemberOut]
+    # Phase 8 design D110: the caller's own role in THIS workspace — the
+    # frontend already fetches this response on boot, so no new call is
+    # needed to drive owner-only UI. Never an authorization input; the
+    # server re-checks every owner-only action via `require_owner`
+    # regardless of what a client sends or renders.
+    your_role: str
 
 
 class WorkspaceRenameIn(BaseModel):
     name: str
+
+
+class TransferOwnershipIn(BaseModel):
+    new_owner_user_id: uuid.UUID
 
 
 class InviteCreateOut(BaseModel):

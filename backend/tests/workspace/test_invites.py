@@ -254,3 +254,35 @@ async def test_raw_invite_token_never_appears_in_list_response_or_equals_stored_
 
     assert stored_hash != raw_token
     assert hashlib.sha256(raw_token.encode("ascii")).hexdigest() == stored_hash
+
+
+async def test_invite_acceptance_never_grants_ownership(seed_user, app_factory) -> None:
+    """Phase 8 design D93/spec workspace-roles "Invite acceptance never
+    grants ownership" scenario: an accepter always lands as `member`,
+    never `owner`, even though the owner's workspace already has one."""
+    owner_id = seed_user(email="owner-invite-role@example.com")
+    accepter_id = seed_user(email="accepter-invite-role@example.com")
+    app = app_factory()
+    transport = ASGITransport(app=app)
+    owner_cookie = _cookie_for(owner_id)
+    accepter_cookie = _cookie_for(accepter_id)
+
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        await client.get("/api/workspace", cookies={"walleza_access": owner_cookie})
+        await client.get("/api/workspace", cookies={"walleza_access": accepter_cookie})
+        invite = await client.post(
+            "/api/workspace/invites", cookies={"walleza_access": owner_cookie}
+        )
+        token = _token_from_url(invite.json()["url"])
+        accept = await client.post(
+            "/api/workspace/invites/accept",
+            json={"token": token},
+            cookies={"walleza_access": accepter_cookie},
+        )
+        assert accept.status_code == 204
+
+        ws = await client.get("/api/workspace", cookies={"walleza_access": owner_cookie})
+
+    roles = {m["email"]: m["role"] for m in ws.json()["members"]}
+    assert roles["owner-invite-role@example.com"] == "owner"
+    assert roles["accepter-invite-role@example.com"] == "member"

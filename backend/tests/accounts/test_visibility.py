@@ -153,7 +153,10 @@ async def test_departed_members_personal_account_invisible_yet_retained_in_db(
     cookie_b = _cookie_for(owner_b)
 
     async with AsyncClient(transport=transport, base_url="https://test") as client:
-        await _join_same_workspace(client, cookie_a, cookie_b)
+        # B is the workspace owner and A is a plain joiner (Phase 8 design
+        # D95: the sole owner cannot self-remove while other members
+        # remain, so A — the one departing here — must NOT be the owner).
+        await _join_same_workspace(client, cookie_b, cookie_a)
 
         created = await client.post(
             "/api/accounts",
@@ -162,10 +165,12 @@ async def test_departed_members_personal_account_invisible_yet_retained_in_db(
         )
         account_id = created.json()["id"]
 
-        # A leaves the workspace (self-removal) — their personal account
-        # row is retained (decision 4 / design D15), just unreachable.
+        # A leaves the workspace (self-removal, Phase 8 design D109's
+        # distinct `DELETE /api/workspace/members/me` path) — their
+        # personal account row is retained (decision 4 / design D15),
+        # just unreachable.
         leave_response = await client.delete(
-            f"/api/workspace/members/{owner_a}", cookies={"walleza_access": cookie_a}
+            "/api/workspace/members/me", cookies={"walleza_access": cookie_a}
         )
         assert leave_response.status_code == 204
 

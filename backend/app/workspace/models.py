@@ -47,12 +47,23 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 
 from sqlalchemy import ForeignKey, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+
+
+class WorkspaceRole(StrEnum):
+    """Phase 8 design D93: exactly two values, matching the
+    `ck_workspace_member_role` CHECK constraint added in migration `0007`.
+    Compared against `WorkspaceMember.role` — never trusted from a JWT
+    claim, always re-read per request (mirrors D96's `require_owner`)."""
+
+    OWNER = "owner"
+    MEMBER = "member"
 
 
 class Workspace(Base):
@@ -88,6 +99,12 @@ class WorkspaceMember(Base):
         nullable=False,
     )
     joined_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    # Phase 8 design D93: TEXT + CHECK (`ck_workspace_member_role`, added in
+    # migration `0007`), not a native PG enum — matches this codebase's
+    # existing Text+CHECK convention and keeps the migration trivially
+    # reversible. `server_default="member"` is safe-by-default: any insert
+    # path that forgets to set `role` produces a member, never an owner.
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default=WorkspaceRole.MEMBER.value)
 
 
 class WorkspaceInvite(Base):

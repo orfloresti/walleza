@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.accounts import service as accounts_service
 from app.db import get_db
-from app.deps import WorkspaceScope, get_current_user, require_membership
+from app.deps import WorkspaceScope, get_current_user, require_membership, require_owner
 from app.security import AccessTokenClaims
 from app.workspace import schemas, service
 
@@ -37,14 +37,20 @@ bootstrap_router = APIRouter(tags=["workspace"])
 router = APIRouter(tags=["workspace"], dependencies=[Depends(require_membership)])
 
 
-def _to_workspace_out(*, workspace_id: uuid.UUID, name: str, db: Session) -> schemas.WorkspaceOut:
+def _to_workspace_out(
+    *, workspace_id: uuid.UUID, name: str, caller_user_id: uuid.UUID, db: Session
+) -> schemas.WorkspaceOut:
     members = service.list_members(db, workspace_id=workspace_id)
+    your_role = next((m.role for m in members if m.user_id == caller_user_id), None)
+    assert your_role is not None, "caller must hold a workspace_member row to reach this response"
     return schemas.WorkspaceOut(
         id=workspace_id,
         name=name,
         members=[
-            schemas.MemberOut(user_id=m.user_id, email=m.email, joined_at=m.joined_at) for m in members
+            schemas.MemberOut(user_id=m.user_id, email=m.email, joined_at=m.joined_at, role=m.role)
+            for m in members
         ],
+        your_role=your_role,
     )
 
 
@@ -55,8 +61,11 @@ def get_workspace(
 ) -> schemas.WorkspaceOut:
     """Get-or-create (design D13). Deliberately NOT behind
     `require_membership` — see this module's docstring."""
-    workspace = service.get_or_create_workspace(db, user_id=uuid.UUID(str(claims.sub)))
-    response = _to_workspace_out(workspace_id=workspace.id, name=workspace.name, db=db)
+    user_id = uuid.UUID(str(claims.sub))
+    workspace = service.get_or_create_workspace(db, user_id=user_id)
+    response = _to_workspace_out(
+        workspace_id=workspace.id, name=workspace.name, caller_user_id=user_id, db=db
+    )
     db.commit()
     return response
 
@@ -64,20 +73,24 @@ def get_workspace(
 @router.patch("/api/workspace", response_model=schemas.WorkspaceOut)
 def rename_workspace(
     body: schemas.WorkspaceRenameIn,
-    scope: WorkspaceScope = Depends(require_membership),
+    scope: WorkspaceScope = Depends(require_owner),
     db: Session = Depends(get_db),
 ) -> schemas.WorkspaceOut:
+    """Owner-only (design D109 "Owner-Only Actions")."""
     workspace = service.rename_workspace(db, scope=scope, name=body.name)
-    response = _to_workspace_out(workspace_id=workspace.id, name=workspace.name, db=db)
+    response = _to_workspace_out(
+        workspace_id=workspace.id, name=workspace.name, caller_user_id=scope.user_id, db=db
+    )
     db.commit()
     return response
 
 
 @router.post("/api/workspace/invites", response_model=schemas.InviteCreateOut, status_code=201)
 def create_invite(
-    scope: WorkspaceScope = Depends(require_membership),
+    scope: WorkspaceScope = Depends(require_owner),
     db: Session = Depends(get_db),
 ) -> schemas.InviteCreateOut:
+    """Owner-only (design D109 "Owner-Only Actions")."""
     issued = service.generate_invite(db, scope=scope)
     db.commit()
     # The raw token is returned exactly once, embedded in this URL — never
@@ -104,9 +117,10 @@ def list_invites(
 @router.delete("/api/workspace/invites/{invite_id}", status_code=204)
 def revoke_invite(
     invite_id: uuid.UUID,
-    scope: WorkspaceScope = Depends(require_membership),
+    scope: WorkspaceScope = Depends(require_owner),
     db: Session = Depends(get_db),
 ) -> None:
+    """Owner-only (design D109 "Owner-Only Actions")."""
     try:
         service.revoke_invite(db, scope=scope, invite_id=invite_id)
     except service.InviteNotFoundError as exc:
@@ -130,14 +144,50 @@ def accept_invite(
     db.commit()
 
 
-@router.delete("/api/workspace/members/{user_id}", status_code=204)
-def remove_member(
-    user_id: uuid.UUID,
+@router.post("/api/workspace/transfer-ownership", status_code=204)
+def transfer_ownership(
+    body: schemas.TransferOwnershipIn,
+    scope: WorkspaceScope = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> None:
+    """Owner-only (design D95/D109)."""
+    try:
+        service.transfer_ownership(db, scope=scope, new_owner_user_id=body.new_owner_user_id)
+    except service.MemberNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="target user is not a member of this workspace"
+        ) from exc
+    db.commit()
+
+
+@router.delete("/api/workspace/members/me", status_code=204)
+def leave_workspace(
     scope: WorkspaceScope = Depends(require_membership),
     db: Session = Depends(get_db),
 ) -> None:
+    """Self-removal (design D109 "Self-Removal Is a Distinct Path") — open
+    to ANY member, not owner-gated. 409 if the caller is the sole owner
+    and other members remain (design D95)."""
+    try:
+        service.leave_workspace(db, scope=scope)
+    except service.LastOwnerError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.commit()
+
+
+@router.delete("/api/workspace/members/{user_id}", status_code=204)
+def remove_member(
+    user_id: uuid.UUID,
+    scope: WorkspaceScope = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> None:
+    """Owner-only, other-member path (design D109). Self-removal targeting
+    the caller's own `user_id` is rejected with 409, pointing at
+    `DELETE /api/workspace/members/me`."""
     try:
         service.remove_member(db, scope=scope, target_user_id=user_id)
+    except service.SelfRemovalNotAllowedHereError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except service.MemberNotFoundError as exc:
         raise HTTPException(status_code=404, detail="member not found") from exc
     db.commit()
