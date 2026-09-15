@@ -35,6 +35,7 @@ import sqlalchemy as sa
 from fastapi import Cookie, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.auth.session import app_user_table
 from app.db import get_db
 from app.security import AccessTokenClaims, TokenError, verify_access_token
 from app.workspace.models import Workspace, WorkspaceMember, WorkspaceRole
@@ -81,15 +82,26 @@ def require_membership(
     inactive workspace is rejected with 403 before it reaches any
     service/mutation code. `WorkspaceScope` itself is returned unchanged
     (no new field), so every downstream signature and `require_owner`
-    (D96) keep composing exactly as before."""
+    (D96) keep composing exactly as before.
+
+    Phase 8 design D101 (gap closure): also joins to
+    `app_user.deactivated_at`, mirroring `app.admin.deps
+    .require_platform_admin`'s own check exactly. A deactivated user's
+    still-valid, un-expired access JWT must not retain ordinary workspace
+    access any more than it retains platform-admin authority — otherwise
+    deactivation only closes the admin surface and leaves every ordinary
+    workspace route reachable until the token naturally expires."""
     user_id = uuid.UUID(str(claims.sub))
     row = db.execute(
-        sa.select(WorkspaceMember.workspace_id, Workspace.is_active)
+        sa.select(WorkspaceMember.workspace_id, Workspace.is_active, app_user_table.c.deactivated_at)
         .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
+        .join(app_user_table, app_user_table.c.id == WorkspaceMember.user_id)
         .where(WorkspaceMember.user_id == user_id)
     ).first()
     if row is None:
         raise HTTPException(status_code=403, detail="not a workspace member")
+    if row.deactivated_at is not None:
+        raise HTTPException(status_code=403, detail="account is deactivated")
     if not row.is_active and request.method not in _SAFE_METHODS:
         raise HTTPException(status_code=403, detail="workspace is deactivated")
     return WorkspaceScope(user_id=user_id, workspace_id=row.workspace_id)
