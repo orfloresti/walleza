@@ -164,6 +164,18 @@ class Settings(BaseSettings):
     # loop for a systematically-failing image.
     ocr_daily_draft_limit: int = 20
 
+    # Phase 9 Unit 5 (design D125/D128/D129): the OCR worker's own Textract
+    # client region. Separate from `s3_region` — `AnalyzeExpense`'s regional
+    # availability is narrower than S3's, so a deployment may need the
+    # worker to call a different, nearby region than the receipts bucket
+    # lives in (cross-region `S3Object` input works within the same AWS
+    # partition, design's Open Questions note). `ocr_low_confidence_threshold`
+    # is design D134's single named constant (never a scattered literal) for
+    # the frontend confidence badge; the worker never applies it itself —
+    # `field_confidence` is stored verbatim (design D117).
+    ocr_textract_region: str = Field(default="us-east-1")
+    ocr_low_confidence_threshold: int = 80
+
     @property
     def resolved_migrations_database_url(self) -> str:
         """The connection string Alembic must use to run DDL.
