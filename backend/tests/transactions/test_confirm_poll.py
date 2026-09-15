@@ -125,6 +125,7 @@ async def test_poll_pending_ocr_has_no_extraction(seed_user, app_factory, db_ses
     assert response.status_code == 200
     body = response.json()
     assert body["ocr_status"] == "pending_ocr"
+    assert body["account_id"] == account_id
     assert body["extraction"] is None
 
 
@@ -160,6 +161,7 @@ async def test_poll_extracted_returns_extraction_fields(
     assert response.status_code == 200
     body = response.json()
     assert body["ocr_status"] == "extracted"
+    assert body["account_id"] == account_id
     assert body["extraction"]["status"] == "succeeded"
     assert body["extraction"]["amount"] == "42.50"
     assert body["extraction"]["vendor_name"] == "Corner Store"
@@ -201,6 +203,7 @@ async def test_poll_extraction_failed_returns_failure_reason(
     assert response.status_code == 200
     body = response.json()
     assert body["ocr_status"] == "extraction_failed"
+    assert body["account_id"] == account_id
     assert body["extraction"]["status"] == "failed"
     assert body["extraction"]["failure_reason"] == "no_receipt_detected"
     assert body["extraction"]["amount"] is None

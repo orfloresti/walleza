@@ -199,7 +199,7 @@ describe('ReceiptConfirmPage', () => {
     fixture.detectChanges();
 
     const ocrReq = httpMock.expectOne('/api/transactions/txn-draft-1/ocr');
-    ocrReq.flush({ ocr_status: 'extracted', extraction: EXTRACTION });
+    ocrReq.flush({ ocr_status: 'extracted', account_id: 'acc-1', extraction: EXTRACTION });
     flushAccountsAndCategories(httpMock);
     fixture.detectChanges();
 
@@ -207,6 +207,13 @@ describe('ReceiptConfirmPage', () => {
     expect((el.querySelector('[data-testid="confirm-amount-input"]') as HTMLInputElement).value).toBe(
       '12.34',
     );
+    // The regression this test guards: on the null-consume() fallback,
+    // `account_id` MUST come from the poll response, never stay the
+    // initial empty-string signal — otherwise the user's account
+    // selection is silently lost on a page refresh mid-review.
+    expect(
+      (el.querySelector('[data-testid="confirm-account-select"]') as HTMLSelectElement).value,
+    ).toBe('acc-1');
   });
 
   it('shows the extraction_failed alert and an all-empty manual form (graceful fallback, not a dead end)', async () => {
@@ -216,7 +223,7 @@ describe('ReceiptConfirmPage', () => {
 
     httpMock
       .expectOne('/api/transactions/txn-draft-1/ocr')
-      .flush({ ocr_status: 'extraction_failed', extraction: null });
+      .flush({ ocr_status: 'extraction_failed', account_id: 'acc-1', extraction: null });
     flushAccountsAndCategories(httpMock);
     fixture.detectChanges();
 
@@ -237,7 +244,7 @@ describe('ReceiptConfirmPage', () => {
 
     httpMock
       .expectOne('/api/transactions/txn-draft-1/ocr')
-      .flush({ ocr_status: 'pending_ocr', extraction: null });
+      .flush({ ocr_status: 'pending_ocr', account_id: 'acc-1', extraction: null });
     flushAccountsAndCategories(httpMock);
     fixture.detectChanges();
 
@@ -255,7 +262,7 @@ describe('ReceiptConfirmPage', () => {
 
     httpMock
       .expectOne('/api/transactions/txn-draft-1/ocr')
-      .flush({ ocr_status: 'extracted', extraction: EXTRACTION });
+      .flush({ ocr_status: 'extracted', account_id: 'acc-1', extraction: EXTRACTION });
     flushAccountsAndCategories(httpMock);
     fixture.detectChanges();
 
@@ -265,7 +272,7 @@ describe('ReceiptConfirmPage', () => {
     const req = httpMock.expectOne('/api/transactions/txn-draft-1/confirm-from-photo');
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({
-      account_id: '',
+      account_id: 'acc-1',
       type: 'expense',
       amount: '12.34',
       occurred_on: '2026-01-15',
@@ -286,7 +293,7 @@ describe('ReceiptConfirmPage', () => {
 
     httpMock
       .expectOne('/api/transactions/txn-draft-1/ocr')
-      .flush({ ocr_status: 'extracted', extraction: EXTRACTION });
+      .flush({ ocr_status: 'extracted', account_id: 'acc-1', extraction: EXTRACTION });
     flushAccountsAndCategories(httpMock);
     fixture.detectChanges();
 
@@ -311,7 +318,7 @@ describe('ReceiptConfirmPage', () => {
 
     httpMock
       .expectOne('/api/transactions/txn-draft-1/ocr')
-      .flush({ ocr_status: 'extracted', extraction: EXTRACTION });
+      .flush({ ocr_status: 'extracted', account_id: 'acc-1', extraction: EXTRACTION });
     flushAccountsAndCategories(httpMock);
     fixture.detectChanges();
 
@@ -336,7 +343,7 @@ describe('ReceiptConfirmPage', () => {
 
     httpMock
       .expectOne('/api/transactions/txn-draft-1/ocr')
-      .flush({ ocr_status: 'extracted', extraction: EXTRACTION });
+      .flush({ ocr_status: 'extracted', account_id: 'acc-1', extraction: EXTRACTION });
     flushAccountsAndCategories(httpMock);
     fixture.detectChanges();
 

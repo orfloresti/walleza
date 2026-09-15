@@ -276,7 +276,10 @@ export class ReceiptConfirmPage {
     // drafts are invisible to the plain transaction GET, so this MUST be
     // `getOcrStatus`, never `TransactionsService.getTransaction`).
     this.transactionsService.getOcrStatus(id).subscribe({
-      next: (result) => this.applyResult(result.ocr_status, result.extraction, false),
+      next: (result) => {
+        this.accountId.set(result.account_id);
+        this.applyResult(result.ocr_status, result.extraction, false);
+      },
       error: () => {
         this.phase.set('manual');
         this.errorKey.set('transactions.scan.confirmError');
