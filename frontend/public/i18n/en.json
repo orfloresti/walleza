@@ -17,7 +17,25 @@
     "removeMember": "Remove",
     "generateInvite": "Generate invite link",
     "inviteError": "Could not generate an invite link. Please try again.",
-    "removeMemberError": "Could not remove that member. Please try again."
+    "removeMemberError": "Could not remove that member. Please try again.",
+    "yourRole": "Your role",
+    "role": {
+      "owner": "Owner",
+      "member": "Member"
+    },
+    "readOnlyBanner": "This workspace is deactivated and is currently read-only.",
+    "transferOwnership": "Transfer ownership",
+    "transferOwnershipSelectPlaceholder": "Select a member",
+    "transferOwnershipConfirm": "This will make the selected member the new owner and demote you to member. This cannot be undone from here.",
+    "transferOwnershipConfirmAction": "Confirm transfer",
+    "transferOwnershipCancel": "Cancel",
+    "transferOwnershipError": "Could not transfer ownership. Please try again.",
+    "auditLog": {
+      "title": "Audit log",
+      "loading": "Loading audit log…",
+      "loadError": "Could not load the audit log. Please try again.",
+      "empty": "No audit events yet."
+    }
   },
   "join": {
     "pending": "Joining the workspace…",

@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, computed, inject, signal } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 
 import { AuthService } from '../../../core/auth/auth.service';
@@ -11,9 +12,25 @@ import {
   UiListRowComponent,
   UiLoadingComponent,
   UiPageHeaderComponent,
+  UiSelectComponent,
+  type UiSelectOption,
 } from '../../../shared/ui';
 import { AccountsService, type WorkspaceSummary } from '../../accounts/data/accounts.service';
-import { WorkspaceService } from '../data/workspace.service';
+import { AuditLogEntry, WorkspaceService } from '../data/workspace.service';
+
+/** Detects Phase 8 design D106's deactivation-lockout 403 (`app/deps.py`'s
+ * `require_membership`: `HTTPException(403, "workspace is deactivated")`).
+ * Frontend-only judgment call (see class docstring): the backend does not
+ * (yet) expose `is_active` on `GET /api/workspace`, so the read-only
+ * banner is driven reactively by this exact rejection instead of a
+ * proactively-fetched flag. */
+function isDeactivatedWorkspaceError(error: unknown): boolean {
+  return (
+    error instanceof HttpErrorResponse &&
+    error.status === 403 &&
+    error.error?.detail === 'workspace is deactivated'
+  );
+}
 
 /**
  * Basic workspace/members view (Phase 1 PR4 scope, task 7.2): renders
@@ -43,6 +60,33 @@ import { WorkspaceService } from '../data/workspace.service';
  * Tailwind utilities directly, matching invariant 1 (the testid stays on
  * the same kind of native element it was on before migration — here, no
  * migration of the element at all, since no kit component exists for it).
+ *
+ * **Phase 8 (PR6, design D110) owner-only controls**, added on top of the
+ * migrated page above:
+ * - Each member row shows its `role` (design D93/D109 `MemberOut.role`).
+ *   `removeMember` is gated to `your_role === 'owner'` (design D109:
+ *   `DELETE /api/workspace/members/{user_id}` is now `require_owner`
+ *   server-side — a plain member would get a 403 today, so hiding the
+ *   control client-side is UX only, matching D110's stated contract).
+ * - **Transfer ownership** (owner-only, design D95/D109): a two-step
+ *   in-page confirm (`ui-select` a target member, then a distinct
+ *   "confirm transfer" step) rather than `window.confirm` — no existing
+ *   page in this codebase uses native `confirm()`, and it is awkward to
+ *   assert against in the `HttpTestingController` spec pattern every
+ *   other page test here follows.
+ * - **Audit log** (owner-only, design D105/O3): `GET /api/workspace/audit`
+ *   fetched only when `your_role === 'owner'`, rendered as a flat list of
+ *   `action` / `created_at` / actor rows including platform-admin actions
+ *   recorded against this workspace.
+ * - **Deactivated read-only banner** (design D106/D110): see
+ *   `isDeactivatedWorkspaceError()` above — the backend's
+ *   `GET /api/workspace` response does not expose `is_active` today, so
+ *   this banner is driven reactively by the exact 403 `require_membership`
+ *   already raises for a non-safe method against a deactivated workspace,
+ *   rather than a proactively-fetched flag. Once shown, it persists for
+ *   the rest of the page's lifetime (it does not clear itself — the
+ *   underlying deactivation is a platform-admin action, not something an
+ *   ordinary owner action can undo from this page).
  */
 @Component({
   selector: 'app-workspace-page',
@@ -56,10 +100,15 @@ import { WorkspaceService } from '../data/workspace.service';
     UiListRowComponent,
     UiLoadingComponent,
     UiPageHeaderComponent,
+    UiSelectComponent,
   ],
   template: `
     <section class="mx-auto w-full max-w-3xl px-4 py-6">
       <ui-page-header titleKey="workspace.title" />
+
+      @if (readOnly()) {
+        <ui-alert variant="warning" messageKey="workspace.readOnlyBanner" testId="workspace-readonly-banner" />
+      }
 
       @if (loading()) {
         <ui-loading messageKey="workspace.loading" />
@@ -68,14 +117,18 @@ import { WorkspaceService } from '../data/workspace.service';
       } @else if (workspace(); as ws) {
         <ui-card>
           <h2 class="text-lg font-semibold text-on-surface">{{ ws.name }}</h2>
+          <p data-testid="your-role" class="text-sm text-on-surface-muted">
+            {{ 'workspace.yourRole' | transloco }}: {{ 'workspace.role.' + ws.your_role | transloco }}
+          </p>
 
           <ui-list testId="workspace-members" class="mt-3">
             @for (member of ws.members; track member.user_id) {
               <ui-list-row>
                 <ui-list-cell>
                   <span>{{ member.email }}</span>
+                  <span class="ml-1 text-xs text-on-surface-muted">({{ 'workspace.role.' + member.role | transloco }})</span>
                 </ui-list-cell>
-                @if (member.user_id !== currentUserId()) {
+                @if (isOwner() && member.user_id !== currentUserId()) {
                   <ui-list-cell class="md:ml-auto">
                     <ui-button variant="secondary" size="sm" (click)="removeMember(member.user_id)">
                       {{ 'workspace.removeMember' | transloco }}
@@ -97,6 +150,76 @@ import { WorkspaceService } from '../data/workspace.service';
 
         @if (actionErrorKey(); as key) {
           <ui-alert [messageKey]="key" class="mt-3" />
+        }
+
+        @if (isOwner() && otherMemberOptions().length > 0) {
+          <ui-card testId="transfer-ownership" class="mt-4">
+            <h2 class="text-lg font-semibold text-on-surface">
+              {{ 'workspace.transferOwnership' | transloco }}
+            </h2>
+
+            <ui-select
+              testId="transfer-ownership-select"
+              [options]="otherMemberOptions()"
+              [(value)]="selectedNewOwnerId"
+              placeholderKey="workspace.transferOwnershipSelectPlaceholder"
+              class="mt-2 block"
+            />
+
+            @if (!confirmingTransfer()) {
+              <ui-button
+                variant="secondary"
+                class="mt-2"
+                [disabled]="!selectedNewOwnerId()"
+                (click)="confirmingTransfer.set(true)"
+              >
+                {{ 'workspace.transferOwnership' | transloco }}
+              </ui-button>
+            } @else {
+              <div class="mt-2 flex items-center gap-2">
+                <ui-alert variant="warning" messageKey="workspace.transferOwnershipConfirm" />
+              </div>
+              <div class="mt-2 flex gap-2">
+                <ui-button variant="danger" size="sm" (click)="transferOwnership()">
+                  {{ 'workspace.transferOwnershipConfirmAction' | transloco }}
+                </ui-button>
+                <ui-button variant="secondary" size="sm" (click)="confirmingTransfer.set(false)">
+                  {{ 'workspace.transferOwnershipCancel' | transloco }}
+                </ui-button>
+              </div>
+            }
+
+            @if (transferErrorKey(); as key) {
+              <ui-alert [messageKey]="key" class="mt-2" />
+            }
+          </ui-card>
+        }
+
+        @if (isOwner()) {
+          <ui-card testId="audit-log" class="mt-4">
+            <h2 class="text-lg font-semibold text-on-surface">{{ 'workspace.auditLog.title' | transloco }}</h2>
+
+            @if (auditLoading()) {
+              <ui-loading messageKey="workspace.auditLog.loading" />
+            } @else if (auditError()) {
+              <ui-alert messageKey="workspace.auditLog.loadError" />
+            } @else {
+              <ui-list testId="audit-log-entries" class="mt-3">
+                @for (entry of auditLog(); track entry.id) {
+                  <ui-list-row>
+                    <ui-list-cell>
+                      <span>{{ entry.action }}</span>
+                      <span class="ml-1 text-xs text-on-surface-muted">{{ entry.created_at }}</span>
+                    </ui-list-cell>
+                  </ui-list-row>
+                } @empty {
+                  <p data-testid="audit-log-empty" class="text-sm text-on-surface-muted">
+                    {{ 'workspace.auditLog.empty' | transloco }}
+                  </p>
+                }
+              </ui-list>
+            }
+          </ui-card>
         }
       }
 
@@ -137,6 +260,30 @@ export class WorkspacePage {
   protected readonly summary = signal<WorkspaceSummary | null>(null);
   protected readonly summaryError = signal(false);
 
+  /** Phase 8 design D106/D110 — see `isDeactivatedWorkspaceError()` above
+   * for why this is reactive rather than proactively fetched. */
+  protected readonly readOnly = signal(false);
+
+  protected readonly isOwner = computed(() => this.workspace()?.your_role === 'owner');
+
+  protected readonly otherMemberOptions = computed<UiSelectOption[]>(() => {
+    const ws = this.workspace();
+    if (!ws) {
+      return [];
+    }
+    return ws.members
+      .filter((m) => m.user_id !== this.currentUserId())
+      .map((m) => ({ value: m.user_id, label: m.email }));
+  });
+
+  protected readonly selectedNewOwnerId = signal('');
+  protected readonly confirmingTransfer = signal(false);
+  protected readonly transferErrorKey = signal<string | null>(null);
+
+  protected readonly auditLog = signal<AuditLogEntry[]>([]);
+  protected readonly auditLoading = signal(false);
+  protected readonly auditError = signal(false);
+
   constructor() {
     this.load();
     this.loadSummary();
@@ -158,10 +305,30 @@ export class WorkspacePage {
     this.loading.set(true);
     this.loadError.set(false);
     this.workspaceService.getWorkspace().subscribe({
-      next: () => this.loading.set(false),
+      next: () => {
+        this.loading.set(false);
+        if (this.isOwner()) {
+          this.loadAuditLog();
+        }
+      },
       error: () => {
         this.loading.set(false);
         this.loadError.set(true);
+      },
+    });
+  }
+
+  private loadAuditLog(): void {
+    this.auditLoading.set(true);
+    this.auditError.set(false);
+    this.workspaceService.getAuditLog().subscribe({
+      next: (entries) => {
+        this.auditLoading.set(false);
+        this.auditLog.set(entries);
+      },
+      error: () => {
+        this.auditLoading.set(false);
+        this.auditError.set(true);
       },
     });
   }
@@ -170,7 +337,12 @@ export class WorkspacePage {
     this.actionErrorKey.set(null);
     this.workspaceService.createInvite().subscribe({
       next: (invite) => this.inviteUrl.set(`${window.location.origin}${invite.url}`),
-      error: () => this.actionErrorKey.set('workspace.inviteError'),
+      error: (err: unknown) => {
+        if (isDeactivatedWorkspaceError(err)) {
+          this.readOnly.set(true);
+        }
+        this.actionErrorKey.set('workspace.inviteError');
+      },
     });
   }
 
@@ -178,7 +350,33 @@ export class WorkspacePage {
     this.actionErrorKey.set(null);
     this.workspaceService.removeMember(userId).subscribe({
       next: () => this.load(),
-      error: () => this.actionErrorKey.set('workspace.removeMemberError'),
+      error: (err: unknown) => {
+        if (isDeactivatedWorkspaceError(err)) {
+          this.readOnly.set(true);
+        }
+        this.actionErrorKey.set('workspace.removeMemberError');
+      },
+    });
+  }
+
+  protected transferOwnership(): void {
+    const newOwnerId = this.selectedNewOwnerId();
+    if (!newOwnerId) {
+      return;
+    }
+    this.transferErrorKey.set(null);
+    this.workspaceService.transferOwnership(newOwnerId).subscribe({
+      next: () => {
+        this.confirmingTransfer.set(false);
+        this.selectedNewOwnerId.set('');
+        this.load();
+      },
+      error: (err: unknown) => {
+        if (isDeactivatedWorkspaceError(err)) {
+          this.readOnly.set(true);
+        }
+        this.transferErrorKey.set('workspace.transferOwnershipError');
+      },
     });
   }
 }

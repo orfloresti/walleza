@@ -17,7 +17,25 @@
     "removeMember": "Eliminar",
     "generateInvite": "Generar enlace de invitación",
     "inviteError": "No se pudo generar el enlace de invitación. Inténtalo de nuevo.",
-    "removeMemberError": "No se pudo eliminar a ese miembro. Inténtalo de nuevo."
+    "removeMemberError": "No se pudo eliminar a ese miembro. Inténtalo de nuevo.",
+    "yourRole": "Tu rol",
+    "role": {
+      "owner": "Propietario",
+      "member": "Miembro"
+    },
+    "readOnlyBanner": "Este espacio de trabajo está desactivado y actualmente es de solo lectura.",
+    "transferOwnership": "Transferir propiedad",
+    "transferOwnershipSelectPlaceholder": "Selecciona un miembro",
+    "transferOwnershipConfirm": "Esto convertirá al miembro seleccionado en el nuevo propietario y te degradará a miembro. Esta acción no se puede deshacer desde aquí.",
+    "transferOwnershipConfirmAction": "Confirmar transferencia",
+    "transferOwnershipCancel": "Cancelar",
+    "transferOwnershipError": "No se pudo transferir la propiedad. Inténtalo de nuevo.",
+    "auditLog": {
+      "title": "Registro de auditoría",
+      "loading": "Cargando el registro de auditoría…",
+      "loadError": "No se pudo cargar el registro de auditoría. Inténtalo de nuevo.",
+      "empty": "Aún no hay eventos de auditoría."
+    }
   },
   "join": {
     "pending": "Uniéndote al espacio de trabajo…",
