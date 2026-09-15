@@ -108,3 +108,25 @@ def ocr_draft_transactions(scope: WorkspaceScope) -> Select:
         .where(Transaction.ocr_status.is_not(None))
         .where(Transaction.ocr_status != OcrStatus.CONFIRMED)
     )
+
+
+def count_ocr_drafts_created_today(
+    scope: WorkspaceScope, *, since: datetime.datetime
+) -> Select:
+    """Design D122: the daily rate-limit count. Counts EVERY row for the
+    workspace whose `ocr_status` is set at all (`IS NOT NULL`) —
+    `pending_ocr`, `extracted`, `extraction_failed`, AND `confirmed` — with
+    `created_at >= since` (the caller passes UTC-midnight-of-today).
+    Deliberately counts by `workspace_id` alone, with NO join to
+    `visible_accounts`: the cost (a Textract call) is already spent
+    regardless of which account the draft was attached to, and a workspace
+    member cannot dodge the cap by targeting a different account within
+    the same workspace. Served by `ix_transaction_ocr_status
+    (workspace_id, ocr_status) WHERE ocr_status IS NOT NULL`."""
+    return (
+        sa.select(sa.func.count())
+        .select_from(Transaction)
+        .where(Transaction.workspace_id == scope.workspace_id)
+        .where(Transaction.ocr_status.is_not(None))
+        .where(Transaction.created_at >= since)
+    )

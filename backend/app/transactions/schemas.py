@@ -169,3 +169,28 @@ class PhotoConfirmOut(BaseModel):
 class PhotoDownloadUrlOut(BaseModel):
     url: str
     expires_at: datetime
+
+
+class DraftFromPhotoIn(BaseModel):
+    """Design D119: `account_id` is a REQUIRED request field — the draft
+    row is inserted with a placeholder `amount=0.01` and no splits, so the
+    only piece of caller-provided state at this step is which account the
+    eventual transaction belongs to. `content_type` reuses the same
+    allowlist `PhotoUploadUrlIn` already enforces (design D25)."""
+
+    account_id: uuid.UUID
+    content_type: PhotoContentType
+
+
+class DraftFromPhotoOut(BaseModel):
+    """Design D131: the presigned-upload payload (identical shape to
+    `PhotoUploadUrlOut`) plus the newly created draft transaction's id, so
+    the caller can immediately start polling `GET
+    /api/transactions/{id}/ocr` once the upload completes."""
+
+    transaction_id: uuid.UUID
+    url: str
+    fields: dict[str, str]
+    expires_at: datetime
+    max_bytes: int
+    content_type: PhotoContentType

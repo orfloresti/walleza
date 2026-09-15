@@ -186,6 +186,43 @@ def delete_transaction(
 
 
 @router.post(
+    "/api/transactions/draft-from-photo",
+    response_model=schemas.DraftFromPhotoOut,
+    status_code=201,
+)
+def create_photo_draft(
+    body: schemas.DraftFromPhotoIn,
+    scope: WorkspaceScope = Depends(require_membership),
+    db: Session = Depends(get_db),
+) -> schemas.DraftFromPhotoOut:
+    try:
+        payload = service.create_photo_draft(
+            db,
+            scope=scope,
+            account_id=body.account_id,
+            content_type=body.content_type,
+        )
+    except service.TransactionValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.OcrDailyLimitExceededError as exc:
+        retry_after = max(
+            0, int((exc.resets_at - datetime.datetime.now(datetime.UTC)).total_seconds())
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "detail": "daily photo-capture limit reached",
+                "limit": exc.limit,
+                "used": exc.used,
+                "resets_at": exc.resets_at.isoformat(),
+            },
+            headers={"Retry-After": str(retry_after)},
+        ) from exc
+    db.commit()
+    return schemas.DraftFromPhotoOut(**payload)
+
+
+@router.post(
     "/api/transactions/{transaction_id}/photo/upload-url",
     response_model=schemas.PhotoUploadUrlOut,
     status_code=201,
