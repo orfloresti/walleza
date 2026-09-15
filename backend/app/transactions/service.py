@@ -44,7 +44,7 @@ from app.config import get_settings
 from app.deps import WorkspaceScope
 from app.transactions import schemas
 from app.transactions.models import Transaction, TransactionCategorySplit
-from app.transactions.queries import visible_transactions
+from app.transactions.queries import ocr_draft_transactions, visible_transactions
 
 
 class TransactionNotFoundError(Exception):
@@ -237,6 +237,33 @@ def update_transaction(
     return transaction
 
 
+def _get_transaction_or_draft(
+    db: Session, *, scope: WorkspaceScope, transaction_id: uuid.UUID
+) -> Transaction:
+    """Design D120/D131's delete-fix: resolves a transaction through
+    `visible_transactions` first (the sanctioned default path, covering
+    every ordinary — NULL or `confirmed` — row), and falls back to
+    `ocr_draft_transactions` (design D120's deliberately narrow
+    complement) only when that lookup misses. This keeps `get_transaction`
+    itself unchanged (still 404s on a draft for every OTHER read path —
+    list, GET, PATCH), while giving `delete_transaction` alone a way to
+    still find and discard an abandoned draft now that the D120 exclusion
+    predicate makes it invisible through the default path. Both queries
+    are scoped by `WorkspaceScope`, so a draft in another member's
+    personal account or another workspace is still invisible."""
+    transaction = db.execute(
+        visible_transactions(scope).where(Transaction.id == transaction_id)
+    ).scalar_one_or_none()
+    if transaction is not None:
+        return transaction
+    transaction = db.execute(
+        ocr_draft_transactions(scope).where(Transaction.id == transaction_id)
+    ).scalar_one_or_none()
+    if transaction is None:
+        raise TransactionNotFoundError("transaction not found")
+    return transaction
+
+
 def delete_transaction(
     db: Session, *, scope: WorkspaceScope, transaction_id: uuid.UUID
 ) -> None:
@@ -247,8 +274,15 @@ def delete_transaction(
     no way to know whether its caller's session will actually commit or
     roll back. `app.transactions.router.delete_transaction` is the one
     place that owns both the commit and the subsequent best-effort S3
-    call."""
-    transaction = get_transaction(db, scope=scope, transaction_id=transaction_id)
+    call.
+
+    Design D120/D131: resolves through `_get_transaction_or_draft` rather
+    than plain `get_transaction`, so a draft row — invisible through
+    `visible_transactions` after the D120 exclusion predicate — can still
+    be discarded by its owner. This is the one existing endpoint the D120
+    exclusion breaks, and the fix ships in the same PR/commit as the
+    exclusion predicate itself (design's explicit caveat)."""
+    transaction = _get_transaction_or_draft(db, scope=scope, transaction_id=transaction_id)
     db.delete(transaction)
     db.flush()
 
