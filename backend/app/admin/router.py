@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.admin import queries, schemas, service
 from app.admin.deps import PlatformAdminContext, require_platform_admin
+from app.audit import queries as audit_queries
+from app.audit import schemas as audit_schemas
 from app.db import get_db
 
 router = APIRouter(
@@ -56,6 +58,27 @@ def list_workspaces(db: Session = Depends(get_db)) -> list[schemas.AdminWorkspac
             created_at=row.created_at,
             member_count=row.member_count,
             is_active=row.is_active,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/audit", response_model=list[audit_schemas.AuditLogEntryOut])
+def list_all_audit_log(db: Session = Depends(get_db)) -> list[audit_schemas.AuditLogEntryOut]:
+    """Design D105: platform admin reads every `audit_log` row, unfiltered
+    (spec audit-log domain's "Platform admin reads all rows" scenario)."""
+    rows = audit_queries.all_audit_log(db)
+    return [
+        audit_schemas.AuditLogEntryOut(
+            id=row.id,
+            created_at=row.created_at,
+            actor_user_id=row.actor_user_id,
+            actor_was_platform_admin=row.actor_was_platform_admin,
+            action=row.action,
+            target_type=row.target_type,
+            target_id=row.target_id,
+            workspace_id=row.workspace_id,
+            metadata=row.metadata,
         )
         for row in rows
     ]

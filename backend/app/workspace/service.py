@@ -21,6 +21,8 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit.actions import AuditAction
+from app.audit.service import record_audit
 from app.auth.session import app_user_table, get_user_by_id
 from app.config import get_settings
 from app.deps import WorkspaceScope
@@ -96,6 +98,17 @@ def _hash_token(raw_token: str) -> str:
     # Mirrors design D8's `refresh_hash` pattern: the raw token only ever
     # exists in the one-time response body; only its sha256 is persisted.
     return hashlib.sha256(raw_token.encode("ascii")).hexdigest()
+
+
+def _actor_was_platform_admin(db: Session, *, user_id: uuid.UUID) -> bool:
+    """Phase 8 Unit 5 (design D102): the audit row's
+    `actor_was_platform_admin` snapshot for an owner-gated action. Local
+    import — mirrors `accept_invite`'s existing local-import idiom in this
+    same module — since `app.admin.models` is otherwise unrelated to this
+    module's own import surface."""
+    from app.admin.models import PlatformAdmin
+
+    return db.get(PlatformAdmin, user_id) is not None
 
 
 # --- bootstrap: get-or-create (design D13) ----------------------------------
@@ -184,11 +197,23 @@ def list_members(db: Session, *, workspace_id: uuid.UUID) -> list[MemberRow]:
 
 
 def rename_workspace(db: Session, *, scope: WorkspaceScope, name: str) -> Workspace:
+    """Owner-only (design D109) — audited (spec audit-log domain,
+    design D104: `workspace.renamed`)."""
     workspace = db.get(Workspace, scope.workspace_id)
     assert workspace is not None
     workspace.name = name
     workspace.updated_at = _now()
     db.flush()
+    record_audit(
+        db,
+        actor_user_id=scope.user_id,
+        actor_was_platform_admin=_actor_was_platform_admin(db, user_id=scope.user_id),
+        action=AuditAction.WORKSPACE_RENAMED,
+        target_type="workspace",
+        target_id=workspace.id,
+        workspace_id=scope.workspace_id,
+        metadata={"name": name},
+    )
     return workspace
 
 
@@ -209,6 +234,15 @@ def generate_invite(db: Session, *, scope: WorkspaceScope) -> IssuedInvite:
     )
     db.add(invite)
     db.flush()
+    record_audit(
+        db,
+        actor_user_id=scope.user_id,
+        actor_was_platform_admin=_actor_was_platform_admin(db, user_id=scope.user_id),
+        action=AuditAction.WORKSPACE_INVITE_GENERATED,
+        target_type="workspace_invite",
+        target_id=invite.id,
+        workspace_id=scope.workspace_id,
+    )
     return IssuedInvite(id=invite.id, token=raw_token, expires_at=invite.expires_at)
 
 
@@ -235,6 +269,15 @@ def revoke_invite(db: Session, *, scope: WorkspaceScope, invite_id: uuid.UUID) -
         raise InviteNotFoundError("invite not found in this workspace")
     invite.revoked_at = _now()
     db.flush()
+    record_audit(
+        db,
+        actor_user_id=scope.user_id,
+        actor_was_platform_admin=_actor_was_platform_admin(db, user_id=scope.user_id),
+        action=AuditAction.WORKSPACE_INVITE_REVOKED,
+        target_type="workspace_invite",
+        target_id=invite_id,
+        workspace_id=scope.workspace_id,
+    )
 
 
 def accept_invite(db: Session, *, scope: WorkspaceScope, raw_token: str) -> None:
@@ -328,6 +371,15 @@ def remove_member(db: Session, *, scope: WorkspaceScope, target_user_id: uuid.UU
     )
     if result.rowcount == 0:
         raise MemberNotFoundError("member not found in this workspace")
+    record_audit(
+        db,
+        actor_user_id=scope.user_id,
+        actor_was_platform_admin=_actor_was_platform_admin(db, user_id=scope.user_id),
+        action=AuditAction.WORKSPACE_MEMBER_REMOVED,
+        target_type="user",
+        target_id=target_user_id,
+        workspace_id=scope.workspace_id,
+    )
 
 
 def leave_workspace(db: Session, *, scope: WorkspaceScope) -> None:
@@ -337,7 +389,15 @@ def leave_workspace(db: Session, *, scope: WorkspaceScope) -> None:
     409); a sole owner who is also the workspace's only member may leave
     (nothing is orphaned — this deletes the `Workspace` row along with the
     `workspace_member` row, mirroring `accept_invite`'s existing
-    solo+empty-workspace deletion pattern)."""
+    solo+empty-workspace deletion pattern).
+
+    Deliberately NOT audited (Phase 8 Unit 5): the confirmed spec
+    (audit-log domain, "Self-Removal Is a Distinct Path" requirement's
+    "Self-removal not audited" scenario) requires self-removal to produce
+    NO `audit_log` row, which is why this function has no `record_audit`
+    call despite design D104's table originally pairing it with a
+    `workspace.member_left` action — see apply-progress for the recorded
+    design/spec deviation."""
     row = db.execute(
         sa.select(WorkspaceMember.role).where(
             WorkspaceMember.workspace_id == scope.workspace_id,
@@ -380,7 +440,9 @@ def transfer_ownership(db: Session, *, scope: WorkspaceScope, new_owner_user_id:
     `app.deps.require_owner`). Atomic demote-self + promote-target in one
     flush: `new_owner_user_id` MUST already be a member of the caller's
     workspace (`MemberNotFoundError` -> 404 otherwise). A no-op transfer
-    to oneself is a harmless idempotent success."""
+    to oneself is a harmless idempotent success — deliberately NOT audited:
+    it changes no ownership state (design D104's `workspace.ownership_
+    transferred` documents an actual transfer, not a no-op call)."""
     if new_owner_user_id == scope.user_id:
         return
 
@@ -410,3 +472,13 @@ def transfer_ownership(db: Session, *, scope: WorkspaceScope, new_owner_user_id:
         .values(role=WorkspaceRole.OWNER.value)
     )
     db.flush()
+    record_audit(
+        db,
+        actor_user_id=scope.user_id,
+        actor_was_platform_admin=_actor_was_platform_admin(db, user_id=scope.user_id),
+        action=AuditAction.WORKSPACE_OWNERSHIP_TRANSFERRED,
+        target_type="user",
+        target_id=new_owner_user_id,
+        workspace_id=scope.workspace_id,
+        metadata={"previous_owner_user_id": str(scope.user_id)},
+    )

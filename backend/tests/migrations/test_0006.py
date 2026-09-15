@@ -144,6 +144,7 @@ _ALL_TABLES_AT_HEAD = {
     "recurring_occurrence",
     "budget",
     "platform_admin",
+    "audit_log",
     "alembic_version",
 }
 
